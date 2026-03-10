@@ -16,6 +16,7 @@ namespace ZeroInject.Generator
         public bool AllowMultiple { get; }
         public bool IsOpenGeneric { get; }
         public string? OpenGenericArity { get; }
+        public bool HasPublicConstructor { get; }
 
         public ServiceRegistrationInfo(
             string ns,
@@ -27,7 +28,8 @@ namespace ZeroInject.Generator
             string? key,
             bool allowMultiple,
             bool isOpenGeneric,
-            string? openGenericArity)
+            string? openGenericArity,
+            bool hasPublicConstructor)
         {
             Namespace = ns;
             TypeName = typeName;
@@ -39,6 +41,7 @@ namespace ZeroInject.Generator
             AllowMultiple = allowMultiple;
             IsOpenGeneric = isOpenGeneric;
             OpenGenericArity = openGenericArity;
+            HasPublicConstructor = hasPublicConstructor;
         }
 
         public bool Equals(ServiceRegistrationInfo? other)

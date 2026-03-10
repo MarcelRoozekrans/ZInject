@@ -96,6 +96,26 @@ namespace ZeroInject.Generator
                 AddNonNull(allServices, scopedInfos);
                 AddNonNull(allServices, singletonInfos);
 
+                // Report diagnostics
+                foreach (var svc in allServices)
+                {
+                    if (!svc.HasPublicConstructor)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.NoPublicConstructor,
+                            Location.None,
+                            svc.TypeName));
+                    }
+
+                    if (svc.Interfaces.Count == 0 && svc.AsType == null)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.NoInterfaces,
+                            Location.None,
+                            svc.TypeName));
+                    }
+                }
+
                 if (allServices.Count == 0)
                 {
                     return;
@@ -247,6 +267,17 @@ namespace ZeroInject.Generator
                 openGenericArity = typeSymbol.TypeParameters.Length.ToString();
             }
 
+            // Check for public constructor
+            bool hasPublicConstructor = false;
+            foreach (var ctor in typeSymbol.InstanceConstructors)
+            {
+                if (ctor.DeclaredAccessibility == Accessibility.Public)
+                {
+                    hasPublicConstructor = true;
+                    break;
+                }
+            }
+
             return new ServiceRegistrationInfo(
                 ns,
                 typeName,
@@ -257,7 +288,8 @@ namespace ZeroInject.Generator
                 key,
                 allowMultiple,
                 isOpenGeneric,
-                openGenericArity);
+                openGenericArity,
+                hasPublicConstructor);
         }
 
         private static string GenerateExtensionClass(
