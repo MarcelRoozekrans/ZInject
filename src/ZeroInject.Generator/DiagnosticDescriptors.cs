@@ -67,5 +67,21 @@ namespace ZeroInject.Generator
             "ZeroInject",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor MultipleConstructorsNoAttribute = new DiagnosticDescriptor(
+            "ZI009",
+            "Multiple public constructors without [ActivatorUtilitiesConstructor]",
+            "Class '{0}' has multiple public constructors. Apply [ActivatorUtilitiesConstructor] to the preferred constructor.",
+            "ZeroInject",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor PrimitiveConstructorParameter = new DiagnosticDescriptor(
+            "ZI010",
+            "Constructor parameter is a primitive/value type",
+            "Constructor parameter '{0}' of class '{1}' is a primitive/value type ({2}). Use IOptions<T> or a wrapper type instead.",
+            "ZeroInject",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }
