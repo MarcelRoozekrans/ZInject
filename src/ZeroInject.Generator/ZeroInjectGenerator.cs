@@ -1,3 +1,10 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 
 namespace ZeroInject.Generator
@@ -5,9 +12,371 @@ namespace ZeroInject.Generator
     [Generator]
     public sealed class ZeroInjectGenerator : IIncrementalGenerator
     {
+        private static readonly SymbolDisplayFormat FullyQualifiedFormat =
+            SymbolDisplayFormat.FullyQualifiedFormat;
+
+        private static readonly HashSet<string> FilteredInterfaces = new HashSet<string>
+        {
+            "System.IDisposable",
+            "System.IAsyncDisposable",
+            "System.IComparable",
+            "System.IFormattable",
+            "System.ICloneable",
+            "System.IConvertible"
+        };
+
+        // Also filter generic versions like IComparable<T>, IEquatable<T>
+        private static readonly HashSet<string> FilteredGenericInterfaces = new HashSet<string>
+        {
+            "System.IComparable",
+            "System.IEquatable"
+        };
+
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            // Will be implemented in Task 4
+            var transients = context.SyntaxProvider.ForAttributeWithMetadataName(
+                "ZeroInject.TransientAttribute",
+                predicate: static (node, _) => true,
+                transform: static (ctx, ct) => GetServiceInfo(ctx, "Transient", ct))
+                .Where(static x => x != null)
+                .Collect();
+
+            var scopeds = context.SyntaxProvider.ForAttributeWithMetadataName(
+                "ZeroInject.ScopedAttribute",
+                predicate: static (node, _) => true,
+                transform: static (ctx, ct) => GetServiceInfo(ctx, "Scoped", ct))
+                .Where(static x => x != null)
+                .Collect();
+
+            var singletons = context.SyntaxProvider.ForAttributeWithMetadataName(
+                "ZeroInject.SingletonAttribute",
+                predicate: static (node, _) => true,
+                transform: static (ctx, ct) => GetServiceInfo(ctx, "Singleton", ct))
+                .Where(static x => x != null)
+                .Collect();
+
+            var assemblyAttr = context.SyntaxProvider.ForAttributeWithMetadataName(
+                "ZeroInject.ZeroInjectAttribute",
+                predicate: static (node, _) => true,
+                transform: static (ctx, ct) =>
+                {
+                    var attr = ctx.Attributes.FirstOrDefault();
+                    if (attr != null && attr.ConstructorArguments.Length > 0)
+                    {
+                        var val = attr.ConstructorArguments[0].Value as string;
+                        if (val != null)
+                        {
+                            return val;
+                        }
+                    }
+                    return (string?)null;
+                })
+                .Where(static x => x != null)
+                .Collect();
+
+            var assemblyName = context.CompilationProvider.Select(
+                static (compilation, _) => compilation.AssemblyName ?? "Assembly");
+
+            var combined = transients
+                .Combine(scopeds)
+                .Combine(singletons)
+                .Combine(assemblyAttr)
+                .Combine(assemblyName);
+
+            context.RegisterSourceOutput(combined, static (spc, data) =>
+            {
+                var transientInfos = data.Left.Left.Left.Left;
+                var scopedInfos = data.Left.Left.Left.Right;
+                var singletonInfos = data.Left.Left.Right;
+                var methodNameOverrides = data.Left.Right;
+                var asmName = data.Right;
+
+                var allServices = new List<ServiceRegistrationInfo>();
+                AddNonNull(allServices, transientInfos);
+                AddNonNull(allServices, scopedInfos);
+                AddNonNull(allServices, singletonInfos);
+
+                if (allServices.Count == 0)
+                {
+                    return;
+                }
+
+                string? methodNameOverride = null;
+                if (methodNameOverrides.Length > 0)
+                {
+                    methodNameOverride = methodNameOverrides[0];
+                }
+
+                var source = GenerateExtensionClass(allServices, asmName, methodNameOverride);
+                spc.AddSource("ZeroInject.ServiceCollectionExtensions.g.cs", source);
+            });
+        }
+
+        private static void AddNonNull(List<ServiceRegistrationInfo> list, ImmutableArray<ServiceRegistrationInfo?> items)
+        {
+            foreach (var item in items)
+            {
+                if (item != null)
+                {
+                    list.Add(item);
+                }
+            }
+        }
+
+        private static ServiceRegistrationInfo? GetServiceInfo(
+            GeneratorAttributeSyntaxContext ctx,
+            string lifetime,
+            CancellationToken ct)
+        {
+            var typeSymbol = ctx.TargetSymbol as INamedTypeSymbol;
+            if (typeSymbol == null)
+            {
+                return null;
+            }
+
+            if (typeSymbol.IsAbstract || typeSymbol.IsStatic)
+            {
+                return null;
+            }
+
+            var ns = typeSymbol.ContainingNamespace.IsGlobalNamespace
+                ? ""
+                : typeSymbol.ContainingNamespace.ToDisplayString();
+
+            var fullyQualifiedName = typeSymbol.ToDisplayString(FullyQualifiedFormat);
+            var typeName = typeSymbol.Name;
+
+            // Extract attribute properties
+            string? asType = null;
+            string? key = null;
+            bool allowMultiple = false;
+
+            var attr = ctx.Attributes.FirstOrDefault();
+            if (attr != null)
+            {
+                foreach (var named in attr.NamedArguments)
+                {
+                    if (named.Key == "As" && named.Value.Value is INamedTypeSymbol asSymbol)
+                    {
+                        asType = asSymbol.ToDisplayString(FullyQualifiedFormat);
+                    }
+                    else if (named.Key == "Key" && named.Value.Value is string keyValue)
+                    {
+                        key = keyValue;
+                    }
+                    else if (named.Key == "AllowMultiple" && named.Value.Value is bool allowValue)
+                    {
+                        allowMultiple = allowValue;
+                    }
+                }
+            }
+
+            // Collect interfaces, filtering out well-known system interfaces
+            var interfaces = new List<string>();
+            foreach (var iface in typeSymbol.AllInterfaces)
+            {
+                var ifaceFullName = iface.ToDisplayString();
+                var ifaceOriginal = iface.OriginalDefinition.ToDisplayString();
+
+                if (FilteredInterfaces.Contains(ifaceFullName))
+                {
+                    continue;
+                }
+
+                if (FilteredInterfaces.Contains(ifaceOriginal))
+                {
+                    continue;
+                }
+
+                // Check generic filtered interfaces (e.g., IComparable<T>, IEquatable<T>)
+                bool filtered = false;
+                if (iface.IsGenericType)
+                {
+                    var originalName = iface.OriginalDefinition.ContainingNamespace + "." + iface.OriginalDefinition.Name;
+                    if (FilteredGenericInterfaces.Contains(originalName))
+                    {
+                        filtered = true;
+                    }
+                }
+
+                if (filtered)
+                {
+                    continue;
+                }
+
+                interfaces.Add(iface.ToDisplayString(FullyQualifiedFormat));
+            }
+
+            // Detect open generics
+            bool isOpenGeneric = typeSymbol.IsGenericType;
+            string? openGenericArity = null;
+            if (isOpenGeneric)
+            {
+                openGenericArity = typeSymbol.TypeParameters.Length.ToString();
+            }
+
+            return new ServiceRegistrationInfo(
+                ns,
+                typeName,
+                fullyQualifiedName,
+                lifetime,
+                interfaces,
+                asType,
+                key,
+                allowMultiple,
+                isOpenGeneric,
+                openGenericArity);
+        }
+
+        private static string GenerateExtensionClass(
+            List<ServiceRegistrationInfo> services,
+            string assemblyName,
+            string? methodNameOverride)
+        {
+            string methodName;
+            if (methodNameOverride != null)
+            {
+                methodName = methodNameOverride;
+            }
+            else
+            {
+                // Remove dots, dashes, underscores from assembly name
+                var cleanName = new StringBuilder();
+                foreach (var c in assemblyName)
+                {
+                    if (c != '.' && c != '-' && c != '_')
+                    {
+                        cleanName.Append(c);
+                    }
+                }
+                methodName = "Add" + cleanName.ToString() + "Services";
+            }
+
+            // Derive class name from method name
+            // e.g. "AddDomainServices" -> "DomainServicesServiceCollectionExtensions"
+            string className;
+            if (methodName.StartsWith("Add"))
+            {
+                className = methodName.Substring(3) + "ServiceCollectionExtensions";
+            }
+            else
+            {
+                className = methodName + "ServiceCollectionExtensions";
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("// <auto-generated />");
+            sb.AppendLine("#nullable enable");
+            sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+            sb.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
+            sb.AppendLine();
+            sb.AppendLine("namespace Microsoft.Extensions.DependencyInjection");
+            sb.AppendLine("{");
+            sb.AppendLine("    public static class " + className);
+            sb.AppendLine("    {");
+            sb.AppendLine("        public static IServiceCollection " + methodName + "(this IServiceCollection services)");
+            sb.AppendLine("        {");
+
+            foreach (var svc in services)
+            {
+                EmitRegistration(sb, svc);
+            }
+
+            sb.AppendLine("            return services;");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+
+            return sb.ToString();
+        }
+
+        private static void EmitRegistration(StringBuilder sb, ServiceRegistrationInfo svc)
+        {
+            var lifetime = svc.Lifetime;
+            var fqn = svc.FullyQualifiedName;
+            var useAdd = svc.AllowMultiple;
+
+            if (svc.AsType != null)
+            {
+                // Only register as the specified type
+                EmitSingleRegistration(sb, lifetime, svc.AsType, fqn, svc.Key, useAdd, svc.IsOpenGeneric);
+                return;
+            }
+
+            // Register all non-filtered interfaces
+            foreach (var iface in svc.Interfaces)
+            {
+                EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric);
+            }
+
+            // Always register concrete type
+            EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric);
+        }
+
+        private static void EmitSingleRegistration(
+            StringBuilder sb,
+            string lifetime,
+            string serviceType,
+            string implType,
+            string? key,
+            bool useAdd,
+            bool isOpenGeneric)
+        {
+            if (isOpenGeneric)
+            {
+                // For open generics, use ServiceDescriptor
+                sb.AppendLine(string.Format(
+                    "            services.Add(ServiceDescriptor.{0}(typeof({1}), typeof({2})));",
+                    lifetime, serviceType, implType));
+                return;
+            }
+
+            if (key != null)
+            {
+                var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
+                sb.AppendLine(string.Format(
+                    "            services.{0}<{1}, {2}>(\"{3}\");",
+                    method, serviceType, implType, key));
+            }
+            else
+            {
+                var method = useAdd ? "Add" + lifetime : "TryAdd" + lifetime;
+                sb.AppendLine(string.Format(
+                    "            services.{0}<{1}, {2}>();",
+                    method, serviceType, implType));
+            }
+        }
+
+        private static void EmitConcreteRegistration(
+            StringBuilder sb,
+            string lifetime,
+            string implType,
+            string? key,
+            bool useAdd,
+            bool isOpenGeneric)
+        {
+            if (isOpenGeneric)
+            {
+                sb.AppendLine(string.Format(
+                    "            services.Add(ServiceDescriptor.{0}(typeof({1}), typeof({2})));",
+                    lifetime, implType, implType));
+                return;
+            }
+
+            if (key != null)
+            {
+                var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
+                sb.AppendLine(string.Format(
+                    "            services.{0}<{1}>(\"{2}\");",
+                    method, implType, key));
+            }
+            else
+            {
+                var method = useAdd ? "Add" + lifetime : "TryAdd" + lifetime;
+                sb.AppendLine(string.Format(
+                    "            services.{0}<{1}>();",
+                    method, implType));
+            }
         }
     }
 }
