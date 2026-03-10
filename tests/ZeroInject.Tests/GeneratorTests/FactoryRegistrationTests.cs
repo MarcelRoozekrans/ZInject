@@ -164,4 +164,94 @@ public class FactoryRegistrationTests
         Assert.Contains("ServiceDescriptor.Scoped(typeof(global::TestApp.IRepository<>), typeof(global::TestApp.Repository<>))", output);
         Assert.DoesNotContain("sp =>", output);
     }
+
+    [Fact]
+    public void MultipleParameters_GeneratesAllGetRequiredService()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface IMyService { }
+            public interface IRepo { }
+            public interface ILogger { }
+
+            [Transient]
+            public class MyService : IMyService
+            {
+                public MyService(IRepo repo, ILogger logger) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+        Assert.Contains("sp.GetRequiredService<global::TestApp.IRepo>()", output);
+        Assert.Contains("sp.GetRequiredService<global::TestApp.ILogger>()", output);
+    }
+
+    [Fact]
+    public void MixedRequiredAndOptionalParameters()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface IMyService { }
+            public interface IRepo { }
+            public interface ILogger { }
+
+            [Transient]
+            public class MyService : IMyService
+            {
+                public MyService(IRepo repo, ILogger? logger = null) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+        Assert.Contains("sp.GetRequiredService<global::TestApp.IRepo>()", output);
+        Assert.Contains("sp.GetService<global::TestApp.ILogger>()", output);
+    }
+
+    [Fact]
+    public void KeyedService_GeneratesKeyedFactoryLambda()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface ICache { }
+
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache { }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+        Assert.Contains("(sp, _) => new global::TestApp.RedisCache()", output);
+        Assert.Contains("\"redis\"", output);
+    }
+
+    [Fact]
+    public void KeyedService_WithParameters_GeneratesKeyedFactoryLambda()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface ICache { }
+            public interface ISerializer { }
+
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache
+            {
+                public RedisCache(ISerializer serializer) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+        Assert.Contains("(sp, _) => new global::TestApp.RedisCache(", output);
+        Assert.Contains("sp.GetRequiredService<global::TestApp.ISerializer>()", output);
+    }
 }
