@@ -31,8 +31,8 @@ public class BasicRegistrationTests
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
         Assert.DoesNotContain("Error", diagnostics.Select(d => d.Severity.ToString()));
-        Assert.Contains("TryAddTransient<global::TestApp.IMyService, global::TestApp.MyService>", output);
-        Assert.Contains("TryAddTransient<global::TestApp.MyService>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IMyService>(sp => new global::TestApp.MyService())", output);
+        Assert.Contains("TryAddTransient(sp => new global::TestApp.MyService())", output);
     }
 
     [Fact]
@@ -50,8 +50,8 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddScoped<global::TestApp.IRepo, global::TestApp.Repo>", output);
-        Assert.Contains("TryAddScoped<global::TestApp.Repo>", output);
+        Assert.Contains("TryAddScoped<global::TestApp.IRepo>(sp => new global::TestApp.Repo())", output);
+        Assert.Contains("TryAddScoped(sp => new global::TestApp.Repo())", output);
     }
 
     [Fact]
@@ -69,8 +69,8 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddSingleton<global::TestApp.ICache, global::TestApp.Cache>", output);
-        Assert.Contains("TryAddSingleton<global::TestApp.Cache>", output);
+        Assert.Contains("TryAddSingleton<global::TestApp.ICache>(sp => new global::TestApp.Cache())", output);
+        Assert.Contains("TryAddSingleton(sp => new global::TestApp.Cache())", output);
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.PlainService>", output);
+        Assert.Contains("TryAddTransient(sp => new global::TestApp.PlainService())", output);
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.IMyService, global::TestApp.MyService>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IMyService>(sp => new global::TestApp.MyService())", output);
         Assert.DoesNotContain("IDisposable", output);
     }
 
@@ -144,8 +144,8 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddKeyedSingleton<global::TestApp.ICache, global::TestApp.RedisCache>(\"redis\")", output);
-        Assert.Contains("TryAddKeyedSingleton<global::TestApp.RedisCache>(\"redis\")", output);
+        Assert.Contains("TryAddKeyedSingleton<global::TestApp.ICache>(\"redis\", (sp, _) => new global::TestApp.RedisCache())", output);
+        Assert.Contains("TryAddKeyedSingleton(\"redis\", (sp, _) => new global::TestApp.RedisCache())", output);
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("services.AddTransient<global::TestApp.IJob, global::TestApp.MyJob>()", output);
+        Assert.Contains("services.AddTransient<global::TestApp.IJob>(sp => new global::TestApp.MyJob())", output);
         Assert.DoesNotContain("TryAdd", output);
     }
 
@@ -183,9 +183,9 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.IFoo, global::TestApp.MyService>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IFoo>(sp => new global::TestApp.MyService())", output);
         Assert.DoesNotContain("IBar", output);
-        Assert.DoesNotContain("TryAddTransient<global::TestApp.MyService>", output);
+        Assert.DoesNotContain("TryAddTransient(sp => new global::TestApp.MyService())", output);
     }
 
     [Fact]
@@ -205,10 +205,10 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.IFoo, global::TestApp.MultiService>", output);
-        Assert.Contains("TryAddTransient<global::TestApp.IBar, global::TestApp.MultiService>", output);
-        Assert.Contains("TryAddTransient<global::TestApp.IBaz, global::TestApp.MultiService>", output);
-        Assert.Contains("TryAddTransient<global::TestApp.MultiService>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IFoo>(sp => new global::TestApp.MultiService())", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IBar>(sp => new global::TestApp.MultiService())", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IBaz>(sp => new global::TestApp.MultiService())", output);
+        Assert.Contains("TryAddTransient(sp => new global::TestApp.MultiService())", output);
     }
 
     [Fact]
@@ -234,9 +234,9 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.IA, global::TestApp.SvcA>", output);
-        Assert.Contains("TryAddScoped<global::TestApp.IB, global::TestApp.SvcB>", output);
-        Assert.Contains("TryAddSingleton<global::TestApp.IC, global::TestApp.SvcC>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IA>(sp => new global::TestApp.SvcA())", output);
+        Assert.Contains("TryAddScoped<global::TestApp.IB>(sp => new global::TestApp.SvcB())", output);
+        Assert.Contains("TryAddSingleton<global::TestApp.IC>(sp => new global::TestApp.SvcC())", output);
     }
 
     [Fact]
@@ -256,7 +256,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.MyService>", output);
+        Assert.Contains("TryAddTransient(sp => new global::TestApp.MyService())", output);
         Assert.DoesNotContain("IDisposable", output);
     }
 
@@ -279,7 +279,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.IMyService, global::TestApp.MyService>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IMyService>(sp => new global::TestApp.MyService())", output);
         Assert.DoesNotContain("IEquatable", output);
     }
 
@@ -298,7 +298,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("services.AddKeyedSingleton<global::TestApp.ICache, global::TestApp.RedisCache>(\"redis\")", output);
+        Assert.Contains("services.AddKeyedSingleton<global::TestApp.ICache>(\"redis\", (sp, _) => new global::TestApp.RedisCache())", output);
         Assert.DoesNotContain("TryAdd", output);
     }
 
@@ -318,7 +318,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddKeyedScoped<global::TestApp.IRead, global::TestApp.Store>(\"main\")", output);
+        Assert.Contains("TryAddKeyedScoped<global::TestApp.IRead>(\"main\", (sp, _) => new global::TestApp.Store())", output);
         Assert.DoesNotContain("IWrite", output);
     }
 
@@ -338,7 +338,7 @@ public class BasicRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains("TryAddTransient<global::TestApp.IFoo, global::TestApp.Foo>", output);
+        Assert.Contains("TryAddTransient<global::TestApp.IFoo>(sp => new global::TestApp.Foo())", output);
         Assert.DoesNotContain("IBar", output);
     }
 }
