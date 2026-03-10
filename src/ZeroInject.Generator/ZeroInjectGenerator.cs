@@ -128,6 +128,8 @@ namespace ZeroInject.Generator
             string lifetime,
             CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
+
             var typeSymbol = ctx.TargetSymbol as INamedTypeSymbol;
             if (typeSymbol == null)
             {
@@ -325,9 +327,10 @@ namespace ZeroInject.Generator
             if (isOpenGeneric)
             {
                 // For open generics, use ServiceDescriptor
+                var addOrTryAdd = useAdd ? "Add" : "TryAdd";
                 sb.AppendLine(string.Format(
-                    "            services.Add(ServiceDescriptor.{0}(typeof({1}), typeof({2})));",
-                    lifetime, serviceType, implType));
+                    "            services.{0}(ServiceDescriptor.{1}(typeof({2}), typeof({3})));",
+                    addOrTryAdd, lifetime, serviceType, implType));
                 return;
             }
 
@@ -357,9 +360,10 @@ namespace ZeroInject.Generator
         {
             if (isOpenGeneric)
             {
+                var addOrTryAdd = useAdd ? "Add" : "TryAdd";
                 sb.AppendLine(string.Format(
-                    "            services.Add(ServiceDescriptor.{0}(typeof({1}), typeof({2})));",
-                    lifetime, implType, implType));
+                    "            services.{0}(ServiceDescriptor.{1}(typeof({2}), typeof({3})));",
+                    addOrTryAdd, lifetime, implType, implType));
                 return;
             }
 
