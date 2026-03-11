@@ -760,6 +760,291 @@ public class IntegrationTests
         Assert.Equal("HandlerB", array[1].GetType().Name);
     }
 
+    // =============================================================
+    // Standalone provider helper + integration tests
+    // =============================================================
+
+    /// <summary>
+    /// Runs the source generator, compiles, and instantiates the generated
+    /// standalone provider (no fallback <see cref="IServiceCollection"/>).
+    /// </summary>
+    private static (Assembly assembly, IServiceProvider provider) BuildAndCreateStandaloneProvider(string source)
+    {
+        var (outputCompilation, diagnostics) = RunGeneratorAndGetCompilation(source);
+
+        var genErrors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        if (genErrors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Generator produced errors:\n" + string.Join("\n", genErrors));
+        }
+
+        using var ms = new MemoryStream();
+        var emitResult = outputCompilation.Emit(ms);
+        if (!emitResult.Success)
+        {
+            var errors = emitResult.Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => d.ToString());
+            throw new InvalidOperationException(
+                "Compilation failed:\n" + string.Join("\n", errors));
+        }
+
+        ms.Seek(0, SeekOrigin.Begin);
+
+        var loadContext = new AssemblyLoadContext(null, isCollectible: true);
+        var assembly = loadContext.LoadFromStream(ms);
+
+        var providerType = assembly.GetTypes()
+            .First(t => t.Name.EndsWith("StandaloneServiceProvider"));
+        var provider = (IServiceProvider)Activator.CreateInstance(providerType)!;
+        return (assembly, provider);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 1. Transient returns non-null, different instances
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_Transient_ReturnsNonNull_DifferentInstances()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IFoo { }
+            [Transient]
+            public class Foo : IFoo { }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var fooType = assembly.GetType("TestApp.IFoo")!;
+
+        var instance1 = provider.GetService(fooType);
+        var instance2 = provider.GetService(fooType);
+
+        Assert.NotNull(instance1);
+        Assert.NotNull(instance2);
+        Assert.NotSame(instance1, instance2);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 2. Singleton returns same instance
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_Singleton_ReturnsSameInstance()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache { }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var cacheType = assembly.GetType("TestApp.ICache")!;
+
+        var first = provider.GetService(cacheType);
+        var second = provider.GetService(cacheType);
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 3. Scoped: same within scope, different across scopes
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_Scoped_SameWithinScope_DifferentAcrossScopes()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IRepo { }
+            [Scoped]
+            public class Repo : IRepo { }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var repoType = assembly.GetType("TestApp.IRepo")!;
+
+        var scopeFactory = (IServiceScopeFactory)provider.GetService(typeof(IServiceScopeFactory))!;
+
+        using var scope1 = scopeFactory.CreateScope();
+        var a1 = scope1.ServiceProvider.GetService(repoType);
+        var a2 = scope1.ServiceProvider.GetService(repoType);
+
+        using var scope2 = scopeFactory.CreateScope();
+        var b1 = scope2.ServiceProvider.GetService(repoType);
+
+        Assert.NotNull(a1);
+        Assert.Same(a1, a2);       // same within scope
+        Assert.NotSame(a1, b1);    // different across scopes
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 4. Unknown type returns null (no fallback)
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_UnknownType_ReturnsNull()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IFoo { }
+            [Transient]
+            public class Foo : IFoo { }
+            """;
+
+        var (_, provider) = BuildAndCreateStandaloneProvider(source);
+
+        var result = provider.GetService(typeof(IntegrationFallbackMarker));
+        Assert.Null(result);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 5. IServiceProvider and IServiceScopeFactory resolve to self
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_IServiceProvider_And_IServiceScopeFactory_ResolveToSelf()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IFoo { }
+            [Transient]
+            public class Foo : IFoo { }
+            """;
+
+        var (_, provider) = BuildAndCreateStandaloneProvider(source);
+
+        var resolvedProvider = provider.GetService(typeof(IServiceProvider));
+        var resolvedFactory = provider.GetService(typeof(IServiceScopeFactory));
+
+        Assert.Same(provider, resolvedProvider);
+        Assert.Same(provider, resolvedFactory);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 6. Scope disposal disposes tracked transients
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_ScopeDisposal_DisposesTrackedTransients()
+    {
+        const string source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+            public interface IHandle { }
+            [Transient]
+            public class Handle : IHandle, IDisposable
+            {
+                public bool IsDisposed { get; private set; }
+                public void Dispose() { IsDisposed = true; }
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var handleType = assembly.GetType("TestApp.IHandle")!;
+
+        var scopeFactory = (IServiceScopeFactory)provider.GetService(typeof(IServiceScopeFactory))!;
+        var scope = scopeFactory.CreateScope();
+
+        var instance = scope.ServiceProvider.GetService(handleType);
+        Assert.NotNull(instance);
+
+        var isDisposedProp = instance!.GetType().GetProperty("IsDisposed")!;
+        Assert.False((bool)isDisposedProp.GetValue(instance)!);
+
+        scope.Dispose();
+
+        Assert.True((bool)isDisposedProp.GetValue(instance)!);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 7. IEnumerable<T> returns all registrations
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_IEnumerable_ReturnsAllRegistrations()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IHandler { }
+            [Transient(AllowMultiple = true)]
+            public class HandlerA : IHandler { }
+            [Transient(AllowMultiple = true)]
+            public class HandlerB : IHandler { }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var enumerableType = typeof(IEnumerable<>).MakeGenericType(assembly.GetType("TestApp.IHandler")!);
+
+        var result = provider.GetService(enumerableType);
+        Assert.NotNull(result);
+
+        var array = ((System.Collections.IEnumerable)result!).Cast<object>().ToArray();
+        Assert.Equal(2, array.Length);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 8. Singleton consistent between root and scope
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_Singleton_ConsistentBetweenRootAndScope()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache { }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var cacheType = assembly.GetType("TestApp.ICache")!;
+
+        var rootInstance = provider.GetService(cacheType);
+
+        var scopeFactory = (IServiceScopeFactory)provider.GetService(typeof(IServiceScopeFactory))!;
+        using var scope = scopeFactory.CreateScope();
+        var scopeInstance = scope.ServiceProvider.GetService(cacheType);
+
+        Assert.NotNull(rootInstance);
+        Assert.Same(rootInstance, scopeInstance);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 9. Transient with dependency injects correctly
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_TransientWithDependency_InjectsCorrectly()
+    {
+        const string source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ILogger { }
+            [Singleton]
+            public class Logger : ILogger { }
+            public interface IService { }
+            [Transient]
+            public class Service : IService
+            {
+                public Service(ILogger logger) { Logger = logger; }
+                public ILogger Logger { get; }
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var serviceType = assembly.GetType("TestApp.IService")!;
+
+        var instance = provider.GetService(serviceType);
+
+        Assert.NotNull(instance);
+        var loggerProp = instance!.GetType().GetProperty("Logger")!;
+        var loggerValue = loggerProp.GetValue(instance);
+        Assert.NotNull(loggerValue);
+    }
+
     /// <summary>
     /// A simple marker type used to verify fallback resolution.
     /// Because this type is defined in the test assembly (not in the
