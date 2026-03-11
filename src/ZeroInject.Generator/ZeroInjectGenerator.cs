@@ -567,9 +567,10 @@ namespace ZeroInject.Generator
             {
                 var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
                 var factory = BuildKeyedFactoryLambda(implType, constructorParameters);
+                var escapedKey = key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>(\"{2}\", {3});",
-                    method, serviceType, key, factory));
+                    method, serviceType, escapedKey, factory));
             }
             else
             {
@@ -694,9 +695,10 @@ namespace ZeroInject.Generator
                 {
                     var serviceTypes = GetServiceTypes(svc);
                     var newExpr = BuildNewExpression(svc);
+                    var escapedKey = svc.Key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                     foreach (var serviceType in serviceTypes)
                     {
-                        sb.AppendLine("                if (serviceType == typeof(" + serviceType + ") && key == \"" + svc.Key + "\")");
+                        sb.AppendLine("                if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
                         sb.AppendLine("                    return " + newExpr + ";");
                     }
                 }
@@ -730,12 +732,26 @@ namespace ZeroInject.Generator
             sb.AppendLine("        private sealed class Scope : " + scopeBase);
             sb.AppendLine("        {");
 
+            // Collect keyed scoped services for field generation
+            var keyedScopeds = new List<ServiceRegistrationInfo>();
+            foreach (var svc in keyedServices)
+            {
+                if (svc.Lifetime == "Scoped")
+                {
+                    keyedScopeds.Add(svc);
+                }
+            }
+
             // Scoped fields
             for (int i = 0; i < scopeds.Count; i++)
             {
                 sb.AppendLine("            private " + scopeds[i].FullyQualifiedName + "? _scoped_" + i + ";");
             }
-            if (scopeds.Count > 0)
+            for (int i = 0; i < keyedScopeds.Count; i++)
+            {
+                sb.AppendLine("            private " + keyedScopeds[i].FullyQualifiedName + "? _keyedScoped_" + i + ";");
+            }
+            if (scopeds.Count > 0 || keyedScopeds.Count > 0)
             {
                 sb.AppendLine();
             }
@@ -800,23 +816,49 @@ namespace ZeroInject.Generator
                 sb.AppendLine("                if (serviceKey is string key)");
                 sb.AppendLine("                {");
 
+                int keyedScopedIndex = 0;
                 foreach (var svc in keyedServices)
                 {
                     var serviceTypes = GetServiceTypes(svc);
-                    string newExpr;
+                    var escapedKey = svc.Key.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
                     if (svc.Lifetime == "Singleton")
                     {
                         // Delegate to root for singletons
-                        newExpr = "((" + className + ")Root).GetKeyedService(serviceType, serviceKey)";
+                        foreach (var serviceType in serviceTypes)
+                        {
+                            sb.AppendLine("                    if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
+                            sb.AppendLine("                        return ((" + className + ")Root).GetKeyedService(serviceType, serviceKey);");
+                        }
+                    }
+                    else if (svc.Lifetime == "Scoped")
+                    {
+                        // Scoped keyed services use dedicated fields with lazy init
+                        var fieldName = "_keyedScoped_" + keyedScopedIndex;
+                        var newExpr = BuildNewExpressionForScope(svc);
+                        foreach (var serviceType in serviceTypes)
+                        {
+                            sb.AppendLine("                    if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
+                            sb.AppendLine("                    {");
+                            sb.AppendLine("                        if (" + fieldName + " == null) " + fieldName + " = " + newExpr + ";");
+                            sb.AppendLine("                        return " + fieldName + ";");
+                            sb.AppendLine("                    }");
+                        }
+                        keyedScopedIndex++;
                     }
                     else
                     {
-                        newExpr = BuildNewExpressionForScope(svc);
-                    }
-                    foreach (var serviceType in serviceTypes)
-                    {
-                        sb.AppendLine("                    if (serviceType == typeof(" + serviceType + ") && key == \"" + svc.Key + "\")");
-                        sb.AppendLine("                        return " + newExpr + ";");
+                        // Transient keyed services - fresh instance, track disposable if needed
+                        var newExpr = BuildNewExpressionForScope(svc);
+                        if (svc.ImplementsDisposable)
+                        {
+                            newExpr = "TrackDisposable(" + newExpr + ")";
+                        }
+                        foreach (var serviceType in serviceTypes)
+                        {
+                            sb.AppendLine("                    if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
+                            sb.AppendLine("                        return " + newExpr + ";");
+                        }
                     }
                 }
 
@@ -970,9 +1012,10 @@ namespace ZeroInject.Generator
             {
                 var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
                 var factory = BuildKeyedFactoryLambda(implType, constructorParameters);
+                var escapedKey = key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 sb.AppendLine(string.Format(
-                    "            services.{0}(\"{1}\", {2});",
-                    method, key, factory));
+                    "            services.{0}<{1}>(\"{2}\", {3});",
+                    method, implType, escapedKey, factory));
             }
             else
             {

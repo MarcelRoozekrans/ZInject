@@ -145,7 +145,7 @@ public class BasicRegistrationTests
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
         Assert.Contains("TryAddKeyedSingleton<global::TestApp.ICache>(\"redis\", (sp, _) => new global::TestApp.RedisCache())", output);
-        Assert.Contains("TryAddKeyedSingleton(\"redis\", (sp, _) => new global::TestApp.RedisCache())", output);
+        Assert.Contains("TryAddKeyedSingleton<global::TestApp.RedisCache>(\"redis\", (sp, _) => new global::TestApp.RedisCache())", output);
     }
 
     [Fact]

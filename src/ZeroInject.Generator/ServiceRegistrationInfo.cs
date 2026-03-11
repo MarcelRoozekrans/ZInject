@@ -67,13 +67,24 @@ namespace ZeroInject.Generator
                 || AsType != other.AsType
                 || Key != other.Key
                 || AllowMultiple != other.AllowMultiple
+                || IsOpenGeneric != other.IsOpenGeneric
+                || HasPublicConstructor != other.HasPublicConstructor
                 || HasMultipleConstructors != other.HasMultipleConstructors
                 || PrimitiveParameterName != other.PrimitiveParameterName
                 || PrimitiveParameterType != other.PrimitiveParameterType
                 || ImplementsDisposable != other.ImplementsDisposable
-                || ConstructorParameters.Count != other.ConstructorParameters.Count)
+                || ConstructorParameters.Count != other.ConstructorParameters.Count
+                || Interfaces.Count != other.Interfaces.Count)
             {
                 return false;
+            }
+
+            for (int i = 0; i < Interfaces.Count; i++)
+            {
+                if (Interfaces[i] != other.Interfaces[i])
+                {
+                    return false;
+                }
             }
 
             for (int i = 0; i < ConstructorParameters.Count; i++)
@@ -96,6 +107,7 @@ namespace ZeroInject.Generator
                 var hash = 17;
                 hash = hash * 31 + FullyQualifiedName.GetHashCode();
                 hash = hash * 31 + Lifetime.GetHashCode();
+                hash = hash * 31 + IsOpenGeneric.GetHashCode();
                 hash = hash * 31 + ConstructorParameters.Count.GetHashCode();
                 return hash;
             }

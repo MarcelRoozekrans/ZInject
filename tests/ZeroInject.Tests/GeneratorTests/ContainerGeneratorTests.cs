@@ -521,6 +521,42 @@ public class ContainerGeneratorTests
     }
 
     [Fact]
+    public void KeyedScopedService_GeneratesScopedFieldAndLazyInit()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IRepo { }
+            [Scoped(Key = "primary")]
+            public class PrimaryRepo : IRepo { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // Should have a keyed scoped field
+        Assert.Contains("_keyedScoped_0", output);
+        // Should have lazy-init pattern in scope's GetKeyedService
+        var scopeKeyedSection = output.Substring(output.IndexOf("public object? GetKeyedService"));
+        Assert.Contains("if (_keyedScoped_0 == null) _keyedScoped_0 = new global::TestApp.PrimaryRepo();", scopeKeyedSection);
+        Assert.Contains("return _keyedScoped_0;", scopeKeyedSection);
+    }
+
+    [Fact]
+    public void KeyedDisposableTransient_InScope_GeneratesTrackDisposable()
+    {
+        var source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+            public interface ICache : IDisposable { }
+            [Transient(Key = "fast")]
+            public class FastCache : ICache { public void Dispose() { } }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // In scope's GetKeyedService, disposable transients should be tracked
+        var scopeKeyedSection = output.Substring(output.IndexOf("public object? GetKeyedService"));
+        Assert.Contains("TrackDisposable", scopeKeyedSection);
+    }
+
+    [Fact]
     public void CreateScopeCore_IsOverridden()
     {
         var source = """
