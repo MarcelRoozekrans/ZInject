@@ -437,6 +437,56 @@ public class ContainerGeneratorTests
         Assert.Contains("CreateServiceProvider", output);
     }
 
+    // --- Task 11: Keyed services ---
+
+    [Fact]
+    public void KeyedService_GeneratesKeyedResolution()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("IKeyedServiceProvider", output);
+        Assert.Contains("\"redis\"", output);
+    }
+
+    [Fact]
+    public void KeyedTransient_InScope_CreatesNewInstance()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Transient(Key = "fast")]
+            public class FastCache : ICache { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("IKeyedServiceProvider", output);
+        Assert.Contains("\"fast\"", output);
+    }
+
+    [Fact]
+    public void KeyedService_NotInResolveKnown()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // Keyed services should NOT appear in ResolveKnown
+        var resolveKnownStart = output.IndexOf("protected override object? ResolveKnown(Type serviceType)");
+        var resolveKnownEnd = output.IndexOf("public object? GetKeyedService");
+        var rootSection = output.Substring(resolveKnownStart, resolveKnownEnd - resolveKnownStart);
+        Assert.DoesNotContain("typeof(global::TestApp.ICache)", rootSection);
+    }
+
     [Fact]
     public void CreateScopeCore_IsOverridden()
     {
