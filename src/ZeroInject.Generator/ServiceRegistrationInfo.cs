@@ -21,6 +21,7 @@ namespace ZeroInject.Generator
         public bool HasMultipleConstructors { get; }
         public string? PrimitiveParameterName { get; }
         public string? PrimitiveParameterType { get; }
+        public bool ImplementsDisposable { get; }
 
         public ServiceRegistrationInfo(
             string ns,
@@ -37,7 +38,8 @@ namespace ZeroInject.Generator
             List<ConstructorParameterInfo> constructorParameters,
             bool hasMultipleConstructors,
             string? primitiveParameterName,
-            string? primitiveParameterType)
+            string? primitiveParameterType,
+            bool implementsDisposable)
         {
             Namespace = ns;
             TypeName = typeName;
@@ -54,6 +56,7 @@ namespace ZeroInject.Generator
             HasMultipleConstructors = hasMultipleConstructors;
             PrimitiveParameterName = primitiveParameterName;
             PrimitiveParameterType = primitiveParameterType;
+            ImplementsDisposable = implementsDisposable;
         }
 
         public bool Equals(ServiceRegistrationInfo? other)
@@ -67,6 +70,7 @@ namespace ZeroInject.Generator
                 || HasMultipleConstructors != other.HasMultipleConstructors
                 || PrimitiveParameterName != other.PrimitiveParameterName
                 || PrimitiveParameterType != other.PrimitiveParameterType
+                || ImplementsDisposable != other.ImplementsDisposable
                 || ConstructorParameters.Count != other.ConstructorParameters.Count)
             {
                 return false;

@@ -298,6 +298,18 @@ namespace ZeroInject.Generator
                 interfaces.Add(ifaceDisplay);
             }
 
+            // Detect IDisposable / IAsyncDisposable
+            bool implementsDisposable = false;
+            foreach (var iface in typeSymbol.AllInterfaces)
+            {
+                var name = iface.ToDisplayString();
+                if (name == "System.IDisposable" || name == "System.IAsyncDisposable")
+                {
+                    implementsDisposable = true;
+                    break;
+                }
+            }
+
             // Detect open generics
             bool isOpenGeneric = typeSymbol.IsGenericType;
             string? openGenericArity = null;
@@ -398,7 +410,8 @@ namespace ZeroInject.Generator
                 constructorParameters,
                 hasMultipleConstructors,
                 primitiveParameterName,
-                primitiveParameterType);
+                primitiveParameterType,
+                implementsDisposable);
         }
 
         private static string GenerateExtensionClass(
@@ -739,6 +752,10 @@ namespace ZeroInject.Generator
             foreach (var svc in transients)
             {
                 var newExpr = BuildNewExpressionForScope(svc);
+                if (svc.ImplementsDisposable)
+                {
+                    newExpr = "TrackDisposable(" + newExpr + ")";
+                }
                 EmitTypeChecks(sb, svc, newExpr, "                ");
             }
 

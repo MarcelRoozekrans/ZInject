@@ -469,6 +469,39 @@ public class ContainerGeneratorTests
         Assert.Contains("\"fast\"", output);
     }
 
+    // --- Task 13: Disposable tracking ---
+
+    [Fact]
+    public void DisposableTransient_InScope_GeneratesTrackDisposable()
+    {
+        var source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+            public interface IFoo : IDisposable { }
+            [Transient]
+            public class Foo : IFoo { public void Dispose() { } }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // In scope, transients that implement IDisposable should be tracked
+        var scopeSection = output.Substring(output.IndexOf("ResolveScopedKnown"));
+        Assert.Contains("TrackDisposable", scopeSection);
+    }
+
+    [Fact]
+    public void NonDisposableTransient_InScope_NoTrackDisposable()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface IFoo { }
+            [Transient]
+            public class Foo : IFoo { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.DoesNotContain("TrackDisposable", output);
+    }
+
     [Fact]
     public void KeyedService_NotInResolveKnown()
     {
