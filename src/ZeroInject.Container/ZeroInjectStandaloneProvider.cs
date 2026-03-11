@@ -44,7 +44,7 @@ public abstract class ZeroInjectStandaloneProvider : IServiceProvider, IServiceS
         }
     }
 
-    public ValueTask DisposeAsync()
+    public virtual ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {

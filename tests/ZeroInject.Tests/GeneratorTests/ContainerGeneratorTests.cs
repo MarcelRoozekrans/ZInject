@@ -946,6 +946,63 @@ public class ContainerGeneratorTests
         Assert.Contains("public Scope(TestAssemblyStandaloneServiceProvider root) : base(root) { }", standaloneSection);
     }
 
+    // --- Standalone singleton disposal ---
+
+    [Fact]
+    public void Standalone_DisposableSingleton_GeneratesDisposeOverride()
+    {
+        var source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache, IDisposable
+            {
+                public void Dispose() { }
+            }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        var standaloneSection = output.Substring(output.IndexOf("TestAssemblyStandaloneServiceProvider"));
+        Assert.Contains("protected override void Dispose(bool disposing)", standaloneSection);
+        Assert.Contains("Interlocked.Exchange(ref _singleton_", standaloneSection);
+    }
+
+    [Fact]
+    public void Standalone_DisposableSingleton_GeneratesDisposeAsyncOverride()
+    {
+        var source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache, IDisposable
+            {
+                public void Dispose() { }
+            }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        var standaloneSection = output.Substring(output.IndexOf("TestAssemblyStandaloneServiceProvider"));
+        Assert.Contains("override async System.Threading.Tasks.ValueTask DisposeAsync()", standaloneSection);
+        Assert.Contains("Interlocked.Exchange(ref _singleton_", standaloneSection);
+    }
+
+    [Fact]
+    public void Standalone_NonDisposableSingleton_NoDisposeOverride()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        var standaloneSection = output.Substring(output.IndexOf("TestAssemblyStandaloneServiceProvider"));
+        Assert.DoesNotContain("protected override void Dispose(bool disposing)", standaloneSection);
+    }
+
     [Fact]
     public void IEnumerable_MultipleTransients_GeneratesArrayWithAll()
     {

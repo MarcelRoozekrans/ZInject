@@ -1457,6 +1457,66 @@ namespace ZeroInject.Generator
             sb.AppendLine("        }");
             sb.AppendLine();
 
+            // Dispose/DisposeAsync overrides — only when there are disposable singletons
+            var disposableSingletonIndices = new List<int>();
+            for (int i = 0; i < singletons.Count; i++)
+            {
+                if (singletons[i].ImplementsDisposable)
+                    disposableSingletonIndices.Add(i);
+            }
+            var disposableKeyedSingletonIndices = new List<int>();
+            for (int i = 0; i < keyedSingletons.Count; i++)
+            {
+                if (keyedSingletons[i].ImplementsDisposable)
+                    disposableKeyedSingletonIndices.Add(i);
+            }
+
+            if (disposableSingletonIndices.Count > 0 || disposableKeyedSingletonIndices.Count > 0)
+            {
+                // Dispose(bool) override
+                sb.AppendLine("        protected override void Dispose(bool disposing)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            base.Dispose(disposing);");
+                sb.AppendLine("            if (disposing)");
+                sb.AppendLine("            {");
+                foreach (var idx in disposableSingletonIndices)
+                {
+                    var fieldName = "_singleton_" + idx;
+                    sb.AppendLine("                var __s" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
+                    sb.AppendLine("                (__s" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                foreach (var idx in disposableKeyedSingletonIndices)
+                {
+                    var fieldName = "_keyedSingleton_" + idx;
+                    sb.AppendLine("                var __ks" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
+                    sb.AppendLine("                (__ks" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                sb.AppendLine("            }");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+
+                // DisposeAsync override
+                sb.AppendLine("        public override async System.Threading.Tasks.ValueTask DisposeAsync()");
+                sb.AppendLine("        {");
+                foreach (var idx in disposableSingletonIndices)
+                {
+                    var fieldName = "_singleton_" + idx;
+                    sb.AppendLine("            var __s" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
+                    sb.AppendLine("            if (__s" + idx + " is System.IAsyncDisposable __ad" + idx + ") await __ad" + idx + ".DisposeAsync().ConfigureAwait(false);");
+                    sb.AppendLine("            else (__s" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                foreach (var idx in disposableKeyedSingletonIndices)
+                {
+                    var fieldName = "_keyedSingleton_" + idx;
+                    sb.AppendLine("            var __ks" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
+                    sb.AppendLine("            if (__ks" + idx + " is System.IAsyncDisposable __kad" + idx + ") await __kad" + idx + ".DisposeAsync().ConfigureAwait(false);");
+                    sb.AppendLine("            else (__ks" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                sb.AppendLine("            await base.DisposeAsync().ConfigureAwait(false);");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+            }
+
             // Nested Scope class
             var scopeBase = "global::ZeroInject.Container.ZeroInjectStandaloneScope";
             if (hasKeyedServices)

@@ -1045,6 +1045,73 @@ public class IntegrationTests
         Assert.NotNull(loggerValue);
     }
 
+    // ---------------------------------------------------------------
+    // Standalone 10. Provider disposal disposes singleton instances
+    // ---------------------------------------------------------------
+    [Fact]
+    public void Standalone_ProviderDisposal_DisposesSingletons()
+    {
+        const string source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache, IDisposable
+            {
+                public bool IsDisposed { get; private set; }
+                public void Dispose() { IsDisposed = true; }
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var cacheType = assembly.GetType("TestApp.ICache")!;
+
+        var instance = provider.GetService(cacheType);
+        Assert.NotNull(instance);
+
+        var isDisposedProp = instance!.GetType().GetProperty("IsDisposed")!;
+        Assert.False((bool)isDisposedProp.GetValue(instance)!);
+
+        ((IDisposable)provider).Dispose();
+
+        Assert.True((bool)isDisposedProp.GetValue(instance)!);
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone 11. Provider DisposeAsync disposes singleton instances
+    // ---------------------------------------------------------------
+    [Fact]
+    public async Task Standalone_ProviderDisposeAsync_DisposesSingletons()
+    {
+        const string source = """
+            using ZeroInject;
+            using System;
+            using System.Threading.Tasks;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class Cache : ICache, IAsyncDisposable
+            {
+                public bool IsDisposed { get; private set; }
+                public ValueTask DisposeAsync() { IsDisposed = true; return default; }
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var cacheType = assembly.GetType("TestApp.ICache")!;
+
+        var instance = provider.GetService(cacheType);
+        Assert.NotNull(instance);
+
+        var isDisposedProp = instance!.GetType().GetProperty("IsDisposed")!;
+        Assert.False((bool)isDisposedProp.GetValue(instance)!);
+
+        await ((IAsyncDisposable)provider).DisposeAsync();
+
+        Assert.True((bool)isDisposedProp.GetValue(instance)!);
+    }
+
     /// <summary>
     /// A simple marker type used to verify fallback resolution.
     /// Because this type is defined in the test assembly (not in the
