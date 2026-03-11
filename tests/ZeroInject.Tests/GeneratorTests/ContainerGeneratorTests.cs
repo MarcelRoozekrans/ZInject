@@ -655,4 +655,123 @@ public class ContainerGeneratorTests
         var keyedSection = output.Substring(keyedStart);
         Assert.Contains("\"redis\"", keyedSection);
     }
+
+    // --- Blindspot fixes ---
+
+    [Fact]
+    public void ScopedDisposable_GeneratesTrackDisposable()
+    {
+        var source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+
+            public interface IRepo { }
+
+            [Scoped]
+            public class Repo : IRepo, IDisposable
+            {
+                public void Dispose() { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("TrackDisposable(", output);
+    }
+
+    [Fact]
+    public void ScopedNonDisposable_DoesNotGenerateTrackDisposable()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface IRepo { }
+
+            [Scoped]
+            public class Repo : IRepo { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // Only scoped, no transients — TrackDisposable should not appear in scoped init
+        var scopedSection = output.Substring(output.IndexOf("ResolveScopedKnown"));
+        Assert.DoesNotContain("TrackDisposable(", scopedSection);
+    }
+
+    [Fact]
+    public void DisposableSingleton_GeneratesRaceDisposalGuard()
+    {
+        var source = """
+            using ZeroInject;
+            using System;
+            namespace TestApp;
+
+            public interface ICache { }
+
+            [Singleton]
+            public class Cache : ICache, IDisposable
+            {
+                public void Dispose() { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("(instance as System.IDisposable)?.Dispose()", output);
+        Assert.Contains("var existing = Interlocked.CompareExchange", output);
+    }
+
+    [Fact]
+    public void NonDisposableSingleton_DoesNotGenerateRaceDisposalGuard()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface ICache { }
+
+            [Singleton]
+            public class Cache : ICache { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.DoesNotContain("(instance as System.IDisposable)?.Dispose()", output);
+    }
+
+    // --- IEnumerable<T> support ---
+
+    [Fact]
+    public void IEnumerable_SingleTransient_GeneratesArrayInResolveKnown()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface IFoo { }
+
+            [Transient]
+            public class Foo : IFoo { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("IEnumerable<global::TestApp.IFoo>", output);
+        Assert.Contains("new global::TestApp.IFoo[]", output);
+    }
+
+    [Fact]
+    public void KeyedServices_GeneratesIKeyedServiceProviderSelfResolution()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface ICache { }
+
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("typeof(IKeyedServiceProvider)", output);
+        Assert.Contains("return this;", output);
+    }
 }

@@ -616,6 +616,42 @@ namespace ZeroInject.Generator
                 else if (svc.Lifetime == "Scoped") scopeds.Add(svc);
             }
 
+            // Group non-keyed services by service type for IEnumerable<T> support.
+            // Each entry maps a service type to the list of (service, lifetime, fieldIndex).
+            // fieldIndex is the index in the corresponding lifetime list (for singleton/scoped field references).
+            var serviceTypeGroups = new Dictionary<string, List<ServiceTypeGroupEntry>>();
+
+            for (int i = 0; i < transients.Count; i++)
+            {
+                var svc = transients[i];
+                foreach (var st in GetServiceTypes(svc))
+                {
+                    if (!serviceTypeGroups.ContainsKey(st))
+                        serviceTypeGroups[st] = new List<ServiceTypeGroupEntry>();
+                    serviceTypeGroups[st].Add(new ServiceTypeGroupEntry(svc, "Transient", i));
+                }
+            }
+            for (int i = 0; i < singletons.Count; i++)
+            {
+                var svc = singletons[i];
+                foreach (var st in GetServiceTypes(svc))
+                {
+                    if (!serviceTypeGroups.ContainsKey(st))
+                        serviceTypeGroups[st] = new List<ServiceTypeGroupEntry>();
+                    serviceTypeGroups[st].Add(new ServiceTypeGroupEntry(svc, "Singleton", i));
+                }
+            }
+            for (int i = 0; i < scopeds.Count; i++)
+            {
+                var svc = scopeds[i];
+                foreach (var st in GetServiceTypes(svc))
+                {
+                    if (!serviceTypeGroups.ContainsKey(st))
+                        serviceTypeGroups[st] = new List<ServiceTypeGroupEntry>();
+                    serviceTypeGroups[st].Add(new ServiceTypeGroupEntry(svc, "Scoped", i));
+                }
+            }
+
             bool hasKeyedServices = keyedServices.Count > 0;
 
             var sb = new StringBuilder();
@@ -670,6 +706,12 @@ namespace ZeroInject.Generator
             sb.AppendLine("        protected override object? ResolveKnown(Type serviceType)");
             sb.AppendLine("        {");
 
+            if (hasKeyedServices)
+            {
+                sb.AppendLine("            if (serviceType == typeof(IKeyedServiceProvider))");
+                sb.AppendLine("                return this;");
+            }
+
             // Transients
             foreach (var svc in transients)
             {
@@ -691,9 +733,56 @@ namespace ZeroInject.Generator
                     sb.AppendLine("            {");
                     sb.AppendLine("                if (" + fieldName + " != null) return " + fieldName + ";");
                     sb.AppendLine("                var instance = " + newExpr + ";");
-                    sb.AppendLine("                return Interlocked.CompareExchange(ref " + fieldName + ", instance, null) ?? " + fieldName + ";");
+                    if (svc.ImplementsDisposable)
+                    {
+                        sb.AppendLine("                var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
+                        sb.AppendLine("                if (existing != null) { (instance as System.IDisposable)?.Dispose(); return existing; }");
+                        sb.AppendLine("                return " + fieldName + ";");
+                    }
+                    else
+                    {
+                        sb.AppendLine("                return Interlocked.CompareExchange(ref " + fieldName + ", instance, null) ?? " + fieldName + ";");
+                    }
                     sb.AppendLine("            }");
                 }
+            }
+
+            // IEnumerable<T> resolution
+            foreach (var kvp in serviceTypeGroups)
+            {
+                var serviceType = kvp.Key;
+                var entries = kvp.Value;
+
+                // Root excludes scoped services
+                var rootEntries = new List<ServiceTypeGroupEntry>();
+                foreach (var entry in entries)
+                {
+                    if (entry.Lifetime != "Scoped")
+                        rootEntries.Add(entry);
+                }
+                if (rootEntries.Count == 0) continue;
+
+                sb.AppendLine("            if (serviceType == typeof(System.Collections.Generic.IEnumerable<" + serviceType + ">))");
+                sb.AppendLine("            {");
+                sb.Append("                return new " + serviceType + "[] { ");
+
+                for (int j = 0; j < rootEntries.Count; j++)
+                {
+                    if (j > 0) sb.Append(", ");
+                    var entry = rootEntries[j];
+
+                    if (entry.Lifetime == "Transient")
+                    {
+                        sb.Append(BuildNewExpression(entry.Svc));
+                    }
+                    else if (entry.Lifetime == "Singleton")
+                    {
+                        sb.Append("(" + serviceType + ")GetService(typeof(" + serviceType + "))!");
+                    }
+                }
+
+                sb.AppendLine(" };");
+                sb.AppendLine("            }");
             }
 
             sb.AppendLine("            return null;");
@@ -722,7 +811,16 @@ namespace ZeroInject.Generator
                         sb.AppendLine("                {");
                         sb.AppendLine("                    if (" + fieldName + " != null) return " + fieldName + ";");
                         sb.AppendLine("                    var instance = " + newExpr + ";");
-                        sb.AppendLine("                    return Interlocked.CompareExchange(ref " + fieldName + ", instance, null) ?? " + fieldName + ";");
+                        if (svc.ImplementsDisposable)
+                        {
+                            sb.AppendLine("                    var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
+                            sb.AppendLine("                    if (existing != null) { (instance as System.IDisposable)?.Dispose(); return existing; }");
+                            sb.AppendLine("                    return " + fieldName + ";");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    return Interlocked.CompareExchange(ref " + fieldName + ", instance, null) ?? " + fieldName + ";");
+                        }
                         sb.AppendLine("                }");
                     }
                 }
@@ -791,6 +889,12 @@ namespace ZeroInject.Generator
             sb.AppendLine("            protected override object? ResolveScopedKnown(Type serviceType)");
             sb.AppendLine("            {");
 
+            if (hasKeyedServices)
+            {
+                sb.AppendLine("                if (serviceType == typeof(IKeyedServiceProvider))");
+                sb.AppendLine("                    return this;");
+            }
+
             // Transients in scope - fresh instance each call
             foreach (var svc in transients)
             {
@@ -825,7 +929,14 @@ namespace ZeroInject.Generator
                 {
                     sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
                     sb.AppendLine("                {");
-                    sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + newExpr + ";");
+                    if (svc.ImplementsDisposable)
+                    {
+                        sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + newExpr + "; TrackDisposable(" + fieldName + "); }");
+                    }
+                    else
+                    {
+                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + newExpr + ";");
+                    }
                     sb.AppendLine("                    return " + fieldName + ";");
                     sb.AppendLine("                }");
                 }
@@ -867,7 +978,14 @@ namespace ZeroInject.Generator
                     {
                         sb.AppendLine("                    if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
                         sb.AppendLine("                    {");
-                        sb.AppendLine("                        if (" + fieldName + " == null) " + fieldName + " = " + newExpr + ";");
+                        if (svc.ImplementsDisposable)
+                        {
+                            sb.AppendLine("                        if (" + fieldName + " == null) { " + fieldName + " = " + newExpr + "; TrackDisposable(" + fieldName + "); }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                        if (" + fieldName + " == null) " + fieldName + " = " + newExpr + ";");
+                        }
                         sb.AppendLine("                        return " + fieldName + ";");
                         sb.AppendLine("                    }");
                     }
@@ -1053,6 +1171,20 @@ namespace ZeroInject.Generator
                     "            services.{0}({1});",
                     method, factory));
             }
+        }
+    }
+
+    internal sealed class ServiceTypeGroupEntry
+    {
+        public ServiceRegistrationInfo Svc { get; }
+        public string Lifetime { get; }
+        public int FieldIndex { get; }
+
+        public ServiceTypeGroupEntry(ServiceRegistrationInfo svc, string lifetime, int fieldIndex)
+        {
+            Svc = svc;
+            Lifetime = lifetime;
+            FieldIndex = fieldIndex;
         }
     }
 }
