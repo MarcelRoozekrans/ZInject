@@ -233,4 +233,34 @@ public class ScopeTests
 
         Assert.True(service.IsDisposed);
     }
+
+    [Fact]
+    public async Task DisposeAsync_disposes_tracked_disposables()
+    {
+        using var provider = CreateProvider();
+        var scope = provider.CreateScope();
+
+        var first = (TransientService)scope.ServiceProvider.GetService(typeof(ITransientService))!;
+        Assert.False(first.IsDisposed);
+
+        await ((IAsyncDisposable)scope).DisposeAsync();
+
+        Assert.True(first.IsDisposed);
+    }
+
+    [Fact]
+    public void Scope_constructor_null_root_throws_ArgumentNullException()
+    {
+        var services = new ServiceCollection();
+        var fallback = services.BuildServiceProvider();
+        using var scope = fallback.CreateScope();
+        Assert.Throws<ArgumentNullException>(() => new TestScope(null!, scope));
+    }
+
+    [Fact]
+    public void Scope_constructor_null_fallbackScope_throws_ArgumentNullException()
+    {
+        using var provider = CreateProvider();
+        Assert.Throws<ArgumentNullException>(() => new TestScope(provider, null!));
+    }
 }

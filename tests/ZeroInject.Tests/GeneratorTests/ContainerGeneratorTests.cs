@@ -589,4 +589,70 @@ public class ContainerGeneratorTests
         Assert.Contains("protected override global::ZeroInject.Container.ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)", output);
         Assert.Contains("return new Scope(this, fallbackScope);", output);
     }
+
+    // --- Phase 3 gap-fill tests ---
+
+    [Fact]
+    public void MultipleKeyedServices_SameInterface_DifferentKeys()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache { }
+            [Singleton(Key = "memory")]
+            public class MemoryCache : ICache { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("\"redis\"", output);
+        Assert.Contains("\"memory\"", output);
+        Assert.Contains("_keyedSingleton_0", output);
+        Assert.Contains("_keyedSingleton_1", output);
+    }
+
+    [Fact]
+    public void KeyedService_WithDependencies_GeneratesGetServiceCalls()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ISerializer { }
+            [Transient]
+            public class JsonSerializer : ISerializer { }
+            public interface ICache { }
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache
+            {
+                public RedisCache(ISerializer serializer) { }
+            }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // The keyed singleton should have dependency resolution in its new expression
+        Assert.Contains("new global::TestApp.RedisCache((global::TestApp.ISerializer)GetService(typeof(global::TestApp.ISerializer))!)", output);
+    }
+
+    [Fact]
+    public void MixedKeyedAndNonKeyed_SameInterface()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            public interface ICache { }
+            [Singleton]
+            public class DefaultCache : ICache { }
+            [Singleton(Key = "redis")]
+            public class RedisCache : ICache { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // Non-keyed should be in ResolveKnown
+        var resolveKnownStart = output.IndexOf("protected override object? ResolveKnown");
+        var keyedStart = output.IndexOf("public object? GetKeyedService");
+        var resolveKnown = output.Substring(resolveKnownStart, keyedStart - resolveKnownStart);
+        Assert.Contains("typeof(global::TestApp.ICache)", resolveKnown); // DefaultCache
+
+        // Keyed should be in GetKeyedService
+        var keyedSection = output.Substring(keyedStart);
+        Assert.Contains("\"redis\"", keyedSection);
+    }
 }

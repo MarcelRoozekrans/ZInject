@@ -149,4 +149,22 @@ public class ServiceProviderBaseTests
         provider.Dispose();
         provider.Dispose(); // Should not throw
     }
+
+    [Fact]
+    public async Task DisposeAsync_disposes_fallback_provider()
+    {
+        var services = new ServiceCollection();
+        var fallback = services.BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+
+        await provider.DisposeAsync();
+
+        Assert.Throws<ObjectDisposedException>(() => fallback.GetRequiredService<IServiceProvider>());
+    }
+
+    [Fact]
+    public void Constructor_null_fallback_throws_ArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => new TestProvider(null!));
+    }
 }
