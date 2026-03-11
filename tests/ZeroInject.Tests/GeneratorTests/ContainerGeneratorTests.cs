@@ -803,4 +803,71 @@ public class ContainerGeneratorTests
         Assert.Contains("typeof(IKeyedServiceProvider)", output);
         Assert.Contains("return this;", output);
     }
+
+    // --- Task 6 (additional): IEnumerable<T> edge cases ---
+
+    [Fact]
+    public void IEnumerable_Singleton_DelegatesToGetService()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface ICache { }
+
+            [Singleton]
+            public class Cache : ICache { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("IEnumerable<global::TestApp.ICache>", output);
+        Assert.Contains("GetService(typeof(global::TestApp.ICache))", output);
+    }
+
+    [Fact]
+    public void IEnumerable_ScopedOnly_ExcludedFromRootResolveKnown()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface IRepo { }
+
+            [Scoped]
+            public class Repo : IRepo { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // Root ResolveKnown should NOT have IEnumerable<IRepo> (scoped excluded)
+        var resolveKnownStart = output.IndexOf("protected override object? ResolveKnown");
+        var createScopeStart = output.IndexOf("protected override global::ZeroInject.Container.ZeroInjectScope CreateScopeCore");
+        var resolveKnown = output.Substring(resolveKnownStart, createScopeStart - resolveKnownStart);
+        Assert.DoesNotContain("IEnumerable<global::TestApp.IRepo>", resolveKnown);
+
+        // Scope ResolveScopedKnown SHOULD have it
+        var scopeSection = output.Substring(output.IndexOf("ResolveScopedKnown"));
+        Assert.Contains("IEnumerable<global::TestApp.IRepo>", scopeSection);
+    }
+
+    [Fact]
+    public void IEnumerable_MultipleTransients_GeneratesArrayWithAll()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+
+            public interface IHandler { }
+
+            [Transient(AllowMultiple = true)]
+            public class HandlerA : IHandler { }
+
+            [Transient(AllowMultiple = true)]
+            public class HandlerB : IHandler { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("IEnumerable<global::TestApp.IHandler>", output);
+        Assert.Contains("new global::TestApp.HandlerA()", output);
+        Assert.Contains("new global::TestApp.HandlerB()", output);
+    }
 }
