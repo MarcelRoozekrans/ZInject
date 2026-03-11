@@ -726,6 +726,35 @@ namespace ZeroInject.Generator
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");
+            sb.AppendLine();
+
+            // Generate extension method and factory in Microsoft.Extensions.DependencyInjection namespace
+            sb.AppendLine("namespace Microsoft.Extensions.DependencyInjection");
+            sb.AppendLine("{");
+
+            // BuildZeroInjectServiceProvider extension method
+            sb.AppendLine("    public static class ZeroInjectServiceCollectionExtensions");
+            sb.AppendLine("    {");
+            sb.AppendLine("        public static IServiceProvider BuildZeroInjectServiceProvider(this IServiceCollection services)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var fallback = services.BuildServiceProvider();");
+            sb.AppendLine("            return new global::ZeroInject.Generated." + className + "(fallback);");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+
+            // ZeroInjectServiceProviderFactory
+            sb.AppendLine("    public sealed class ZeroInjectServiceProviderFactory : IServiceProviderFactory<IServiceCollection>");
+            sb.AppendLine("    {");
+            sb.AppendLine("        public IServiceCollection CreateBuilder(IServiceCollection services) => services;");
+            sb.AppendLine();
+            sb.AppendLine("        public IServiceProvider CreateServiceProvider(IServiceCollection containerBuilder)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var fallback = containerBuilder.BuildServiceProvider();");
+            sb.AppendLine("            return new global::ZeroInject.Generated." + className + "(fallback);");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
 
             return sb.ToString();
         }

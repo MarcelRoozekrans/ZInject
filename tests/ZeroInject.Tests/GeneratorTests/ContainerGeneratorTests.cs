@@ -402,6 +402,41 @@ public class ContainerGeneratorTests
         Assert.Contains("typeof(global::TestApp.IRepo)", scopeSection);
     }
 
+    // --- Task 9: BuildZeroInjectServiceProvider extension method ---
+
+    [Fact]
+    public void GeneratesBuildExtensionMethod()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            [Transient]
+            public class Svc { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("BuildZeroInjectServiceProvider", output);
+        Assert.Contains("this IServiceCollection services", output);
+        Assert.Contains("BuildServiceProvider()", output);
+    }
+
+    // --- Task 10: ZeroInjectServiceProviderFactory ---
+
+    [Fact]
+    public void GeneratesServiceProviderFactory()
+    {
+        var source = """
+            using ZeroInject;
+            namespace TestApp;
+            [Transient]
+            public class Svc { }
+            """;
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("class ZeroInjectServiceProviderFactory", output);
+        Assert.Contains("IServiceProviderFactory<IServiceCollection>", output);
+        Assert.Contains("CreateBuilder", output);
+        Assert.Contains("CreateServiceProvider", output);
+    }
+
     [Fact]
     public void CreateScopeCore_IsOverridden()
     {
