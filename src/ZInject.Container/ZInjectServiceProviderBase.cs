@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZInject.Container;
 
-public abstract class ZInjectServiceProviderBase : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
+public abstract class ZInjectServiceProviderBase : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
 {
     private readonly IServiceProvider _fallback;
     private int _disposed;
@@ -31,6 +31,11 @@ public abstract class ZInjectServiceProviderBase : IServiceProvider, IServiceSco
             return this;
         }
 
+        if (serviceType == typeof(IServiceProviderIsKeyedService))
+        {
+            return this;
+        }
+
         return ResolveKnown(serviceType) ?? _fallback.GetService(serviceType);
     }
 
@@ -38,13 +43,21 @@ public abstract class ZInjectServiceProviderBase : IServiceProvider, IServiceSco
 
     protected abstract bool IsKnownService(Type serviceType);
 
+    protected abstract bool IsKnownKeyedService(Type serviceType, object serviceKey);
+
     public bool IsService(Type serviceType)
     {
         if (serviceType == typeof(IServiceProvider) || serviceType == typeof(IServiceScopeFactory)
-            || serviceType == typeof(IServiceProviderIsService))
+            || serviceType == typeof(IServiceProviderIsService) || serviceType == typeof(IServiceProviderIsKeyedService))
             return true;
         return IsKnownService(serviceType)
             || (_fallback as IServiceProviderIsService)?.IsService(serviceType) == true;
+    }
+
+    public bool IsKeyedService(Type serviceType, object? serviceKey)
+    {
+        return IsKnownKeyedService(serviceType, serviceKey!)
+            || (_fallback as IServiceProviderIsKeyedService)?.IsKeyedService(serviceType, serviceKey) == true;
     }
 
     public IServiceScope CreateScope()

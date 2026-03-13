@@ -88,6 +88,8 @@ public class ScopeTests
 
         protected override bool IsKnownService(Type serviceType) => false;
 
+        protected override bool IsKnownKeyedService(Type serviceType, object serviceKey) => false;
+
         protected override ZInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
@@ -275,5 +277,25 @@ public class ScopeTests
         var result = scope.ServiceProvider.GetService(typeof(IServiceProviderIsService));
         Assert.NotNull(result);
         Assert.Same(provider, result);
+    }
+
+    [Fact]
+    public void GetService_IServiceProviderIsKeyedService_ReturnsRoot()
+    {
+        var fallback = new ServiceCollection().BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+        using var scope = provider.CreateScope();
+        var result = scope.ServiceProvider.GetService(typeof(IServiceProviderIsKeyedService));
+        Assert.NotNull(result);
+        Assert.Same(provider, result);
+    }
+
+    [Fact]
+    public void IsKeyedService_DelegatesToRoot()
+    {
+        var fallback = new ServiceCollection().BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+        using var scope = provider.CreateScope();
+        Assert.False(((IServiceProviderIsKeyedService)scope.ServiceProvider).IsKeyedService(typeof(string), "unknown"));
     }
 }

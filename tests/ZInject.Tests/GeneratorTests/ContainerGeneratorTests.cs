@@ -530,7 +530,7 @@ public class ContainerGeneratorTests
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         // Keyed services should NOT appear in ResolveKnown
         var resolveKnownStart = output.IndexOf("protected override object? ResolveKnown(Type serviceType)");
-        var resolveKnownEnd = output.IndexOf("public object? GetKeyedService");
+        var resolveKnownEnd = output.IndexOf("protected override bool IsKnownService");
         var rootSection = output.Substring(resolveKnownStart, resolveKnownEnd - resolveKnownStart);
         Assert.DoesNotContain("typeof(global::TestApp.ICache)", rootSection);
     }

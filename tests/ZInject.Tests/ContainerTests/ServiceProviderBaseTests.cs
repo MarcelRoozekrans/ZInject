@@ -50,6 +50,8 @@ public class ServiceProviderBaseTests
 
         protected override bool IsKnownService(Type serviceType) => false;
 
+        protected override bool IsKnownKeyedService(Type serviceType, object serviceKey) => false;
+
         protected override ZInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
@@ -198,5 +200,31 @@ public class ServiceProviderBaseTests
         var fallback = new ServiceCollection().BuildServiceProvider();
         var provider = new TestProvider(fallback);
         Assert.False(((IServiceProviderIsService)provider).IsService(typeof(string)));
+    }
+
+    [Fact]
+    public void GetService_IServiceProviderIsKeyedService_ReturnsSelf()
+    {
+        var fallback = new ServiceCollection().BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+        var result = provider.GetService(typeof(IServiceProviderIsKeyedService));
+        Assert.NotNull(result);
+        Assert.Same(provider, result);
+    }
+
+    [Fact]
+    public void IsKeyedService_UnknownKeyedService_ReturnsFalse()
+    {
+        var fallback = new ServiceCollection().BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+        Assert.False(((IServiceProviderIsKeyedService)provider).IsKeyedService(typeof(string), "unknown"));
+    }
+
+    [Fact]
+    public void IsService_IServiceProviderIsKeyedService_ReturnsTrue()
+    {
+        var fallback = new ServiceCollection().BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+        Assert.True(((IServiceProviderIsService)provider).IsService(typeof(IServiceProviderIsKeyedService)));
     }
 }

@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZInject.Container;
 
-public abstract class ZInjectStandaloneScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IDisposable, IAsyncDisposable
+public abstract class ZInjectStandaloneScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
 {
     private readonly ZInjectStandaloneProvider _root;
     private readonly object _trackLock = new object();
@@ -36,12 +36,19 @@ public abstract class ZInjectStandaloneScope : IServiceScope, IServiceProvider, 
             return _root;
         }
 
+        if (serviceType == typeof(IServiceProviderIsKeyedService))
+        {
+            return _root;
+        }
+
         return ResolveScopedKnown(serviceType);
     }
 
     protected abstract object? ResolveScopedKnown(Type serviceType);
 
     public bool IsService(Type serviceType) => ((IServiceProviderIsService)_root).IsService(serviceType);
+
+    public bool IsKeyedService(Type serviceType, object? serviceKey) => ((IServiceProviderIsKeyedService)_root).IsKeyedService(serviceType, serviceKey);
 
     protected T TrackDisposable<T>(T instance)
         where T : notnull

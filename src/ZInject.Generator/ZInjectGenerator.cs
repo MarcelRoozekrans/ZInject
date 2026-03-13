@@ -984,6 +984,9 @@ namespace ZInject.Generator
             EmitIsKnownService(sb, serviceTypeGroups, new List<ServiceRegistrationInfo>(), hasKeyedServices);
             sb.AppendLine();
 
+            EmitIsKnownKeyedService(sb, keyedServices);
+            sb.AppendLine();
+
             // Keyed service methods
             if (hasKeyedServices)
             {
@@ -1639,6 +1642,9 @@ namespace ZInject.Generator
             EmitIsKnownService(sb, serviceTypeGroups, openGenerics, hasKeyedServices);
             sb.AppendLine();
 
+            EmitIsKnownKeyedService(sb, keyedServices);
+            sb.AppendLine();
+
             // Keyed service methods
             if (hasKeyedServices)
             {
@@ -2072,6 +2078,35 @@ namespace ZInject.Generator
                         sb.AppendLine("                if (_genDef == typeof(" + st + ")) return true;");
                     }
                 }
+                sb.AppendLine("            }");
+            }
+
+            sb.AppendLine("            return false;");
+            sb.AppendLine("        }");
+        }
+
+        private static void EmitIsKnownKeyedService(
+            StringBuilder sb,
+            List<ServiceRegistrationInfo> keyedServices)
+        {
+            sb.AppendLine("        protected override bool IsKnownKeyedService(global::System.Type serviceType, object serviceKey)");
+            sb.AppendLine("        {");
+
+            if (keyedServices.Count > 0)
+            {
+                sb.AppendLine("            if (serviceKey is string key)");
+                sb.AppendLine("            {");
+
+                foreach (var svc in keyedServices)
+                {
+                    var serviceTypes = GetServiceTypes(svc);
+                    var escapedKey = svc.Key!.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                    foreach (var serviceType in serviceTypes)
+                    {
+                        sb.AppendLine("                if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\") return true;");
+                    }
+                }
+
                 sb.AppendLine("            }");
             }
 

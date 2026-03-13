@@ -16,6 +16,8 @@ public class StandaloneProviderBaseTests
 
         protected override bool IsKnownService(Type serviceType) => false;
 
+        protected override bool IsKnownKeyedService(Type serviceType, object serviceKey) => false;
+
         protected override ZInject.Container.ZInjectStandaloneScope CreateScopeCore()
         {
             return new TestScope(this);
@@ -115,6 +117,29 @@ public class StandaloneProviderBaseTests
     {
         var provider = new TestProvider();
         Assert.False(((IServiceProviderIsService)provider).IsService(typeof(string)));
+    }
+
+    [Fact]
+    public void GetService_IServiceProviderIsKeyedService_ReturnsSelf()
+    {
+        var provider = new TestProvider();
+        var result = provider.GetService(typeof(IServiceProviderIsKeyedService));
+        Assert.NotNull(result);
+        Assert.Same(provider, result);
+    }
+
+    [Fact]
+    public void IsKeyedService_UnknownKeyedService_ReturnsFalse()
+    {
+        var provider = new TestProvider();
+        Assert.False(((IServiceProviderIsKeyedService)provider).IsKeyedService(typeof(string), "unknown"));
+    }
+
+    [Fact]
+    public void IsService_IServiceProviderIsKeyedService_ReturnsTrue()
+    {
+        var provider = new TestProvider();
+        Assert.True(((IServiceProviderIsService)provider).IsService(typeof(IServiceProviderIsKeyedService)));
     }
 
     // Open generic resolution is now fully code-generated (inline delegate factories).

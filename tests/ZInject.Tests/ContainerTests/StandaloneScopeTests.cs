@@ -6,6 +6,7 @@ public class StandaloneScopeTests
     {
         protected override object? ResolveKnown(Type serviceType) => null;
         protected override bool IsKnownService(Type serviceType) => false;
+        protected override bool IsKnownKeyedService(Type serviceType, object serviceKey) => false;
         protected override ZInject.Container.ZInjectStandaloneScope CreateScopeCore()
             => new TestScope(this);
     }
@@ -125,12 +126,31 @@ public class StandaloneScopeTests
         Assert.Same(provider, result);
     }
 
+    [Fact]
+    public void GetService_IServiceProviderIsKeyedService_ReturnsRoot()
+    {
+        var provider = new TestProvider();
+        using var scope = provider.CreateScope();
+        var result = scope.ServiceProvider.GetService(typeof(Microsoft.Extensions.DependencyInjection.IServiceProviderIsKeyedService));
+        Assert.NotNull(result);
+        Assert.Same(provider, result);
+    }
+
+    [Fact]
+    public void IsKeyedService_DelegatesToRoot()
+    {
+        var provider = new TestProvider();
+        using var scope = provider.CreateScope();
+        Assert.False(((Microsoft.Extensions.DependencyInjection.IServiceProviderIsKeyedService)scope.ServiceProvider).IsKeyedService(typeof(string), "unknown"));
+    }
+
     // GetOrAddScopedOpenGeneric: used by generated scoped open-generic resolution
 
     private class TestScopedOpenGenericProvider : ZInject.Container.ZInjectStandaloneProvider
     {
         protected override object? ResolveKnown(Type serviceType) => null;
         protected override bool IsKnownService(Type serviceType) => false;
+        protected override bool IsKnownKeyedService(Type serviceType, object serviceKey) => false;
         protected override ZInject.Container.ZInjectStandaloneScope CreateScopeCore() => new TestScopedOgScope(this);
 
         private sealed class TestScopedOgScope : ZInject.Container.ZInjectStandaloneScope

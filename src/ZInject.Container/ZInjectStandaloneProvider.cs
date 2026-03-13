@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZInject.Container;
 
-public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
+public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
 {
     private int _disposed;
 
@@ -23,6 +23,11 @@ public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScop
             return this;
         }
 
+        if (serviceType == typeof(IServiceProviderIsKeyedService))
+        {
+            return this;
+        }
+
         return ResolveKnown(serviceType);
     }
 
@@ -30,12 +35,19 @@ public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScop
 
     protected abstract bool IsKnownService(Type serviceType);
 
+    protected abstract bool IsKnownKeyedService(Type serviceType, object serviceKey);
+
     public bool IsService(Type serviceType)
     {
         if (serviceType == typeof(IServiceProvider) || serviceType == typeof(IServiceScopeFactory)
-            || serviceType == typeof(IServiceProviderIsService))
+            || serviceType == typeof(IServiceProviderIsService) || serviceType == typeof(IServiceProviderIsKeyedService))
             return true;
         return IsKnownService(serviceType);
+    }
+
+    public bool IsKeyedService(Type serviceType, object? serviceKey)
+    {
+        return IsKnownKeyedService(serviceType, serviceKey!);
     }
 
     public IServiceScope CreateScope()
