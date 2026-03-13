@@ -188,4 +188,91 @@ public class DiagnosticTests
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
         Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI013", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void ZI014_CircularDependency_AB_ReportsError()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IA { }
+            public interface IB { }
+            [Transient]
+            public class A : IA { public A(IB b) { } }
+            [Transient]
+            public class B : IB { public B(IA a) { } }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ZI014_NoCycle_NoDiagnostic()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IA { }
+            public interface IB { }
+            [Transient]
+            public class A : IA { public A(IB b) { } }
+            [Transient]
+            public class B : IB { }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ZI014_ThreeNodeCycle_ReportsError()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IA { }
+            public interface IB { }
+            public interface IC { }
+            [Transient] public class A : IA { public A(IB b) { } }
+            [Transient] public class B : IB { public B(IC c) { } }
+            [Transient] public class C : IC { public C(IA a) { } }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ZI014_OptionalDependencyBreaksCycle_NoDiagnostic()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IA { }
+            public interface IB { }
+            [Transient]
+            public class A : IA { public A(IB b = null) { } }
+            [Transient]
+            public class B : IB { public B(IA a) { } }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ZI014_DecoratorSelfReference_NotFlagged()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [Decorator]
+            public class LoggingFoo : IFoo
+            {
+                public LoggingFoo(IFoo inner) { }
+            }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+    }
 }

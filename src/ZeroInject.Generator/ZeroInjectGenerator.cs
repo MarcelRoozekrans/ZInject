@@ -213,6 +213,8 @@ namespace ZeroInject.Generator
                     list.Add(dec);
                 }
 
+                DetectCircularDependencies(spc, allServices, decoratorsByInterface);
+
                 if (allServices.Count == 0)
                 {
                     return;
@@ -2094,6 +2096,133 @@ namespace ZeroInject.Generator
                 types.Add(svc.FullyQualifiedName);
             }
             return types;
+        }
+
+        private static void DetectCircularDependencies(
+            SourceProductionContext spc,
+            List<ServiceRegistrationInfo> allServices,
+            Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
+        {
+            // Build service type -> ServiceRegistrationInfo lookup
+            var serviceByType = new Dictionary<string, ServiceRegistrationInfo>();
+            foreach (var svc in allServices)
+            {
+                foreach (var st in GetServiceTypes(svc))
+                {
+                    serviceByType[st] = svc; // last-wins
+                }
+            }
+
+            // Build adjacency list
+            var adjacency = new Dictionary<string, List<string>>();
+            foreach (var svc in allServices)
+            {
+                var deps = new List<string>();
+                foreach (var param in svc.ConstructorParameters)
+                {
+                    if (param.IsOptional) continue;
+                    if (serviceByType.ContainsKey(param.FullyQualifiedTypeName))
+                    {
+                        deps.Add(param.FullyQualifiedTypeName);
+                    }
+                }
+                foreach (var st in GetServiceTypes(svc))
+                {
+                    adjacency[st] = deps;
+                }
+            }
+
+            // Add decorator edges
+            foreach (var kvp in decoratorsByInterface)
+            {
+                var interfaceFqn = kvp.Key;
+                foreach (var dec in kvp.Value)
+                {
+                    foreach (var param in dec.ConstructorParameters)
+                    {
+                        if (param.IsOptional) continue;
+                        if (param.FullyQualifiedTypeName == dec.DecoratedInterfaceFqn) continue;
+                        if (serviceByType.ContainsKey(param.FullyQualifiedTypeName))
+                        {
+                            if (adjacency.TryGetValue(interfaceFqn, out var existing))
+                            {
+                                existing.Add(param.FullyQualifiedTypeName);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // DFS cycle detection
+            var color = new Dictionary<string, int>();
+            var parent = new Dictionary<string, string?>();
+            foreach (var key in adjacency.Keys)
+            {
+                color[key] = 0;
+                parent[key] = null;
+            }
+
+            var reportedCycles = new System.Collections.Generic.HashSet<string>();
+
+            foreach (var node in adjacency.Keys.ToList())
+            {
+                if (color.TryGetValue(node, out var c) && c == 0)
+                {
+                    DfsCycleDetect(node, adjacency, color, parent, spc, reportedCycles);
+                }
+            }
+        }
+
+        private static void DfsCycleDetect(
+            string node,
+            Dictionary<string, List<string>> adjacency,
+            Dictionary<string, int> color,
+            Dictionary<string, string?> parent,
+            SourceProductionContext spc,
+            System.Collections.Generic.HashSet<string> reportedCycles)
+        {
+            color[node] = 1; // gray
+
+            if (adjacency.TryGetValue(node, out var deps))
+            {
+                foreach (var dep in deps)
+                {
+                    if (!color.ContainsKey(dep))
+                    {
+                        color[dep] = 0;
+                    }
+
+                    if (color[dep] == 0)
+                    {
+                        parent[dep] = node;
+                        DfsCycleDetect(dep, adjacency, color, parent, spc, reportedCycles);
+                    }
+                    else if (color[dep] == 1)
+                    {
+                        // Cycle found - reconstruct path
+                        var cycle = new List<string> { dep };
+                        var current = node;
+                        while (current != null && current != dep)
+                        {
+                            cycle.Add(current);
+                            parent.TryGetValue(current, out current);
+                        }
+                        cycle.Add(dep);
+                        cycle.Reverse();
+                        var cyclePath = string.Join(" \u2192 ", cycle);
+
+                        if (reportedCycles.Add(cyclePath))
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.CircularDependency,
+                                Location.None,
+                                cyclePath));
+                        }
+                    }
+                }
+            }
+
+            color[node] = 2; // black
         }
 
         private static string BuildNewExpression(ServiceRegistrationInfo svc)

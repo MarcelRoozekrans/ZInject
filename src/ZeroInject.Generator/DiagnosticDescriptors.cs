@@ -107,5 +107,13 @@ namespace ZeroInject.Generator
             "ZeroInject",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor CircularDependency = new DiagnosticDescriptor(
+            "ZI014",
+            "Circular dependency detected",
+            "Circular dependency detected: {0}",
+            "ZeroInject",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }
