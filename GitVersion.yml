@@ -1,18 +1,27 @@
-mode: ContinuousDeployment
-next-version: 0.9.0
+workflow: GitHubFlow/v1
+mode: ContinuousDelivery
 branches:
   main:
-    regex: ^main$
-    mode: ContinuousDelivery
-    tag: ''
+    label: ''
     increment: Patch
+    prevent-increment:
+      of-merged-branch: true
+    regex: ^master$|^main$
+    is-main-branch: true
   feature:
-    regex: ^feature/
-    mode: ContinuousDeployment
-    tag: alpha
+    mode: ManualDeployment
+    label: '{BranchName}'
     increment: Minor
+    regex: ^features?[/-](?<BranchName>.+)
+    source-branches:
+    - main
   pull-request:
-    regex: ^(pull|pull\-requests|pr)[/-]
-    mode: ContinuousDeployment
-    tag: pr
+    mode: ContinuousDelivery
+    label: PullRequest{Number}
     increment: Inherit
+    prevent-increment:
+      of-merged-branch: true
+    regex: ^(pull-requests|pull|pr)[/-](?<Number>\d*)
+    source-branches:
+    - main
+    - feature
