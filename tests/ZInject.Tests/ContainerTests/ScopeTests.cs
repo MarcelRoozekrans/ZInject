@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using ZeroInject.Container;
+using ZInject.Container;
 
-namespace ZeroInject.Tests.ContainerTests;
+namespace ZInject.Tests.ContainerTests;
 
 public class ScopeTests
 {
@@ -36,12 +36,12 @@ public class ScopeTests
         }
     }
 
-    private sealed class TestScope : ZeroInjectScope
+    private sealed class TestScope : ZInjectScope
     {
         private ScopedService? _scopedInstance;
-        private readonly ZeroInjectServiceProviderBase _rootRef;
+        private readonly ZInjectServiceProviderBase _rootRef;
 
-        public TestScope(ZeroInjectServiceProviderBase root, IServiceScope fallbackScope)
+        public TestScope(ZInjectServiceProviderBase root, IServiceScope fallbackScope)
             : base(root, fallbackScope)
         {
             _rootRef = root;
@@ -69,7 +69,7 @@ public class ScopeTests
         }
     }
 
-    private sealed class TestProvider : ZeroInjectServiceProviderBase
+    private sealed class TestProvider : ZInjectServiceProviderBase
     {
         private SingletonService? _singleton;
 
@@ -88,7 +88,7 @@ public class ScopeTests
 
         protected override bool IsKnownService(Type serviceType) => false;
 
-        protected override ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)
+        protected override ZInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
 

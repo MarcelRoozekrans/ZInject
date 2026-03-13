@@ -1,7 +1,7 @@
 using System;
 using Microsoft.CodeAnalysis;
 
-namespace ZeroInject.Tests.GeneratorTests;
+namespace ZInject.Tests.GeneratorTests;
 
 public class DiagnosticTests
 {
@@ -9,7 +9,7 @@ public class DiagnosticTests
     public void NoPublicConstructor_ProducesZI006()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             [Transient]
@@ -28,7 +28,7 @@ public class DiagnosticTests
     public void NoInterfaces_ProducesZI007()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             [Transient]
@@ -44,7 +44,7 @@ public class DiagnosticTests
     public void WithInterfaces_DoesNotProduceZI007()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IMyService { }
@@ -62,7 +62,7 @@ public class DiagnosticTests
     public void WithPublicConstructor_DoesNotProduceZI006()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             [Transient]
@@ -81,7 +81,7 @@ public class DiagnosticTests
     public void ImplicitDefaultConstructor_DoesNotProduceZI006()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IMyService { }
@@ -99,7 +99,7 @@ public class DiagnosticTests
     public void MixedConstructors_PublicExists_DoesNotProduceZI006()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IMyService { }
@@ -121,7 +121,7 @@ public class DiagnosticTests
     public void AbstractClass_IsSkipped()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IMyService { }
@@ -139,7 +139,7 @@ public class DiagnosticTests
     public void ZI011_DecoratorWithNoMatchingInterface_ReportsError()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             public interface IBar { }
             [Decorator]
@@ -159,7 +159,7 @@ public class DiagnosticTests
     public void ZI012_DecoratorWithNoRegisteredInner_ReportsError()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Decorator]
             public class LoggingFoo : IFoo
@@ -176,7 +176,7 @@ public class DiagnosticTests
     public void ZI013_AbstractDecorator_ReportsWarning()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Decorator]
             public abstract class LoggingFoo : IFoo
@@ -193,7 +193,7 @@ public class DiagnosticTests
     public void ZI014_CircularDependency_AB_ReportsError()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IA { }
             public interface IB { }
             [Transient]
@@ -210,7 +210,7 @@ public class DiagnosticTests
     public void ZI014_NoCycle_NoDiagnostic()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IA { }
             public interface IB { }
             [Transient]
@@ -227,7 +227,7 @@ public class DiagnosticTests
     public void ZI014_ThreeNodeCycle_ReportsError()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IA { }
             public interface IB { }
             public interface IC { }
@@ -244,7 +244,7 @@ public class DiagnosticTests
     public void ZI014_OptionalDependencyBreaksCycle_NoDiagnostic()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IA { }
             public interface IB { }
             [Transient]
@@ -261,7 +261,7 @@ public class DiagnosticTests
     public void ZI014_DecoratorSelfReference_NotFlagged()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Transient]
             public class FooImpl : IFoo { }

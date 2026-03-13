@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace ZeroInject.Tests;
+namespace ZInject.Tests;
 
 public class AttributeTests
 {
@@ -49,9 +49,9 @@ public class AttributeTests
     }
 
     [Fact]
-    public void ZeroInjectAttribute_StoresMethodName()
+    public void ZInjectAttribute_StoresMethodName()
     {
-        var attr = new ZeroInjectAttribute("AddMyServices");
+        var attr = new ZInjectAttribute("AddMyServices");
         Assert.Equal("AddMyServices", attr.MethodName);
     }
 

@@ -7,10 +7,10 @@ using System.Text;
 using System.Threading;
 using Microsoft.CodeAnalysis;
 
-namespace ZeroInject.Generator
+namespace ZInject.Generator
 {
     [Generator]
-    public sealed class ZeroInjectGenerator : IIncrementalGenerator
+    public sealed class ZInjectGenerator : IIncrementalGenerator
     {
         private static readonly SymbolDisplayFormat FullyQualifiedFormat =
             SymbolDisplayFormat.FullyQualifiedFormat;
@@ -35,28 +35,28 @@ namespace ZeroInject.Generator
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             var transients = context.SyntaxProvider.ForAttributeWithMetadataName(
-                "ZeroInject.TransientAttribute",
+                "ZInject.TransientAttribute",
                 predicate: static (node, _) => true,
                 transform: static (ctx, ct) => GetServiceInfo(ctx, "Transient", ct))
                 .Where(static x => x != null)
                 .Collect();
 
             var scopeds = context.SyntaxProvider.ForAttributeWithMetadataName(
-                "ZeroInject.ScopedAttribute",
+                "ZInject.ScopedAttribute",
                 predicate: static (node, _) => true,
                 transform: static (ctx, ct) => GetServiceInfo(ctx, "Scoped", ct))
                 .Where(static x => x != null)
                 .Collect();
 
             var singletons = context.SyntaxProvider.ForAttributeWithMetadataName(
-                "ZeroInject.SingletonAttribute",
+                "ZInject.SingletonAttribute",
                 predicate: static (node, _) => true,
                 transform: static (ctx, ct) => GetServiceInfo(ctx, "Singleton", ct))
                 .Where(static x => x != null)
                 .Collect();
 
             var assemblyAttr = context.SyntaxProvider.ForAttributeWithMetadataName(
-                "ZeroInject.ZeroInjectAttribute",
+                "ZInject.ZInjectAttribute",
                 predicate: static (node, _) => true,
                 transform: static (ctx, ct) =>
                 {
@@ -82,7 +82,7 @@ namespace ZeroInject.Generator
                 {
                     foreach (var asm in compilation.ReferencedAssemblyNames)
                     {
-                        if (asm.Name == "ZeroInject.Container")
+                        if (asm.Name == "ZInject.Container")
                         {
                             return true;
                         }
@@ -91,7 +91,7 @@ namespace ZeroInject.Generator
                 });
 
             var decorators = context.SyntaxProvider.ForAttributeWithMetadataName(
-                "ZeroInject.DecoratorAttribute",
+                "ZInject.DecoratorAttribute",
                 predicate: static (node, _) => true,
                 transform: static (ctx, ct) => GetDecoratorInfo(ctx, ct))
                 .Where(static x => x != null)
@@ -227,12 +227,12 @@ namespace ZeroInject.Generator
                 }
 
                 var source = GenerateExtensionClass(allServices, asmName, methodNameOverride, decoratorsByInterface);
-                spc.AddSource("ZeroInject.ServiceCollectionExtensions.g.cs", source);
+                spc.AddSource("ZInject.ServiceCollectionExtensions.g.cs", source);
 
                 if (containerReferenced)
                 {
                     var providerSource = GenerateServiceProviderClass(allServices, asmName, decoratorsByInterface);
-                    spc.AddSource("ZeroInject.ServiceProvider.g.cs", providerSource);
+                    spc.AddSource("ZInject.ServiceProvider.g.cs", providerSource);
 
                     var standaloneCode = GenerateStandaloneServiceProviderClass(allServices, asmName, decoratorsByInterface);
                     spc.AddSource(asmName + ".StandaloneServiceProvider.g.cs", standaloneCode);
@@ -835,9 +835,9 @@ namespace ZeroInject.Generator
             sb.AppendLine("using System.Threading;");
             sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
             sb.AppendLine();
-            sb.AppendLine("namespace ZeroInject.Generated");
+            sb.AppendLine("namespace ZInject.Generated");
             sb.AppendLine("{");
-            var baseClass = "global::ZeroInject.Container.ZeroInjectServiceProviderBase";
+            var baseClass = "global::ZInject.Container.ZInjectServiceProviderBase";
             if (hasKeyedServices)
             {
                 baseClass = baseClass + ", IKeyedServiceProvider";
@@ -1047,14 +1047,14 @@ namespace ZeroInject.Generator
             }
 
             // CreateScopeCore
-            sb.AppendLine("        protected override global::ZeroInject.Container.ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)");
+            sb.AppendLine("        protected override global::ZInject.Container.ZInjectScope CreateScopeCore(IServiceScope fallbackScope)");
             sb.AppendLine("        {");
             sb.AppendLine("            return new Scope(this, fallbackScope);");
             sb.AppendLine("        }");
             sb.AppendLine();
 
             // Nested Scope class
-            var scopeBase = "global::ZeroInject.Container.ZeroInjectScope";
+            var scopeBase = "global::ZInject.Container.ZInjectScope";
             if (hasKeyedServices)
             {
                 scopeBase = scopeBase + ", IKeyedServiceProvider";
@@ -1324,26 +1324,26 @@ namespace ZeroInject.Generator
             sb.AppendLine("namespace Microsoft.Extensions.DependencyInjection");
             sb.AppendLine("{");
 
-            // BuildZeroInjectServiceProvider extension method
-            sb.AppendLine("    public static class ZeroInjectServiceCollectionExtensions");
+            // BuildZInjectServiceProvider extension method
+            sb.AppendLine("    public static class ZInjectServiceCollectionExtensions");
             sb.AppendLine("    {");
-            sb.AppendLine("        public static IServiceProvider BuildZeroInjectServiceProvider(this IServiceCollection services)");
+            sb.AppendLine("        public static IServiceProvider BuildZInjectServiceProvider(this IServiceCollection services)");
             sb.AppendLine("        {");
             sb.AppendLine("            var fallback = services.BuildServiceProvider();");
-            sb.AppendLine("            return new global::ZeroInject.Generated." + className + "(fallback);");
+            sb.AppendLine("            return new global::ZInject.Generated." + className + "(fallback);");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine();
 
-            // ZeroInjectServiceProviderFactory
-            sb.AppendLine("    public sealed class ZeroInjectServiceProviderFactory : IServiceProviderFactory<IServiceCollection>");
+            // ZInjectServiceProviderFactory
+            sb.AppendLine("    public sealed class ZInjectServiceProviderFactory : IServiceProviderFactory<IServiceCollection>");
             sb.AppendLine("    {");
             sb.AppendLine("        public IServiceCollection CreateBuilder(IServiceCollection services) => services;");
             sb.AppendLine();
             sb.AppendLine("        public IServiceProvider CreateServiceProvider(IServiceCollection containerBuilder)");
             sb.AppendLine("        {");
             sb.AppendLine("            var fallback = containerBuilder.BuildServiceProvider();");
-            sb.AppendLine("            return new global::ZeroInject.Generated." + className + "(fallback);");
+            sb.AppendLine("            return new global::ZInject.Generated." + className + "(fallback);");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -1441,9 +1441,9 @@ namespace ZeroInject.Generator
             sb.AppendLine("using System.Threading;");
             sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
             sb.AppendLine();
-            sb.AppendLine("namespace ZeroInject.Generated");
+            sb.AppendLine("namespace ZInject.Generated");
             sb.AppendLine("{");
-            var baseClass = "global::ZeroInject.Container.ZeroInjectStandaloneProvider";
+            var baseClass = "global::ZInject.Container.ZInjectStandaloneProvider";
             if (hasKeyedServices)
             {
                 baseClass = baseClass + ", IKeyedServiceProvider";
@@ -1702,7 +1702,7 @@ namespace ZeroInject.Generator
             }
 
             // CreateScopeCore - no parameter for standalone
-            sb.AppendLine("        protected override global::ZeroInject.Container.ZeroInjectStandaloneScope CreateScopeCore()");
+            sb.AppendLine("        protected override global::ZInject.Container.ZInjectStandaloneScope CreateScopeCore()");
             sb.AppendLine("        {");
             sb.AppendLine("            return new Scope(this);");
             sb.AppendLine("        }");
@@ -1769,7 +1769,7 @@ namespace ZeroInject.Generator
             }
 
             // Nested Scope class
-            var scopeBase = "global::ZeroInject.Container.ZeroInjectStandaloneScope";
+            var scopeBase = "global::ZInject.Container.ZInjectStandaloneScope";
             if (hasKeyedServices)
             {
                 scopeBase = scopeBase + ", IKeyedServiceProvider";

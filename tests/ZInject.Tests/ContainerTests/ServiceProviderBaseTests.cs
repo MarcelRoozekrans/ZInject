@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using ZeroInject.Container;
+using ZInject.Container;
 
-namespace ZeroInject.Tests.ContainerTests;
+namespace ZInject.Tests.ContainerTests;
 
 public class ServiceProviderBaseTests
 {
@@ -17,16 +17,16 @@ public class ServiceProviderBaseTests
 
     private sealed class FallbackOnlyService : IFallbackOnly { }
 
-    private sealed class TestScope : ZeroInjectScope
+    private sealed class TestScope : ZInjectScope
     {
-        public TestScope(ZeroInjectServiceProviderBase root, IServiceScope fallbackScope)
+        public TestScope(ZInjectServiceProviderBase root, IServiceScope fallbackScope)
             : base(root, fallbackScope) { }
 
         protected override object? ResolveScopedKnown(Type serviceType) => null;
     }
 
 
-    private sealed class TestProvider : ZeroInjectServiceProviderBase
+    private sealed class TestProvider : ZInjectServiceProviderBase
     {
         private TestCache? _singleton;
 
@@ -50,7 +50,7 @@ public class ServiceProviderBaseTests
 
         protected override bool IsKnownService(Type serviceType) => false;
 
-        protected override ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)
+        protected override ZInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
 

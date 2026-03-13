@@ -1,21 +1,21 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ZeroInject.Container;
+namespace ZInject.Container;
 
-public abstract class ZeroInjectStandaloneScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IDisposable, IAsyncDisposable
+public abstract class ZInjectStandaloneScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IDisposable, IAsyncDisposable
 {
-    private readonly ZeroInjectStandaloneProvider _root;
+    private readonly ZInjectStandaloneProvider _root;
     private readonly object _trackLock = new object();
     private List<object>? _disposables;
     private int _disposed;
     private System.Collections.Generic.Dictionary<Type, object>? _openGenericScoped;
 
-    protected ZeroInjectStandaloneScope(ZeroInjectStandaloneProvider root)
+    protected ZInjectStandaloneScope(ZInjectStandaloneProvider root)
     {
         _root = root ?? throw new ArgumentNullException(nameof(root));
     }
 
-    protected ZeroInjectStandaloneProvider Root => _root;
+    protected ZInjectStandaloneProvider Root => _root;
 
     public IServiceProvider ServiceProvider => this;
 

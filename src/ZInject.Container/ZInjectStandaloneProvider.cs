@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ZeroInject.Container;
+namespace ZInject.Container;
 
-public abstract class ZeroInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
+public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
 {
     private int _disposed;
 
@@ -43,7 +43,7 @@ public abstract class ZeroInjectStandaloneProvider : IServiceProvider, IServiceS
         return CreateScopeCore();
     }
 
-    protected abstract ZeroInjectStandaloneScope CreateScopeCore();
+    protected abstract ZInjectStandaloneScope CreateScopeCore();
 
     public void Dispose()
     {

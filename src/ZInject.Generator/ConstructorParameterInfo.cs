@@ -1,7 +1,7 @@
 #nullable enable
 using System;
 
-namespace ZeroInject.Generator
+namespace ZInject.Generator
 {
     internal sealed class ConstructorParameterInfo : IEquatable<ConstructorParameterInfo>
     {

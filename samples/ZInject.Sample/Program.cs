@@ -1,18 +1,18 @@
 using Microsoft.Extensions.DependencyInjection;
-using ZeroInject.Sample.UseCases;
+using ZInject.Sample.UseCases;
 
 // ============================================================
-// ZeroInject Sample — E-Commerce use cases
+// ZInject Sample — E-Commerce use cases
 // ============================================================
 // This program exercises the three integration modes:
-//   1. MS DI extension method  (AddZeroInjectSampleServices)
-//   2. Hybrid ZeroInject container  (BuildZeroInjectServiceProvider)
-//   3. Standalone ZeroInject provider  (new ...StandaloneServiceProvider())
+//   1. MS DI extension method  (AddZInjectSampleServices)
+//   2. Hybrid ZInject container  (BuildZInjectServiceProvider)
+//   3. Standalone ZInject provider  (new ...StandaloneServiceProvider())
 
 Console.WriteLine("=== Use case 1: Product catalog (MS DI extension, decorator) ===");
 {
     var services = new ServiceCollection();
-    services.AddZeroInjectSampleServices();
+    services.AddZInjectSampleServices();
     using var provider = services.BuildServiceProvider();
 
     var repo = provider.GetRequiredService<IProductRepository>();
@@ -25,8 +25,8 @@ Console.WriteLine();
 Console.WriteLine("=== Use case 2: Order processing (hybrid container, scoped) ===");
 {
     var services = new ServiceCollection();
-    services.AddZeroInjectSampleServices();
-    var provider = services.BuildZeroInjectServiceProvider();
+    services.AddZInjectSampleServices();
+    var provider = services.BuildZInjectServiceProvider();
     var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 
     using var scope = scopeFactory.CreateScope();
@@ -40,7 +40,7 @@ Console.WriteLine();
 Console.WriteLine("=== Use case 3: Notifications (singleton email gateway) ===");
 {
     var services = new ServiceCollection();
-    services.AddZeroInjectSampleServices();
+    services.AddZInjectSampleServices();
     using var provider = services.BuildServiceProvider();
 
     var notifier = provider.GetRequiredService<INotificationService>();
@@ -55,7 +55,7 @@ Console.WriteLine("=== Use case 3: Notifications (singleton email gateway) ===")
 Console.WriteLine();
 Console.WriteLine("=== Use case 4: Inventory (standalone provider, open generics) ===");
 {
-    using var provider = new ZeroInject.Generated.ZeroInjectSampleStandaloneServiceProvider();
+    using var provider = new ZInject.Generated.ZInjectSampleStandaloneServiceProvider();
 
     // Open generic resolved at runtime via MakeGenericType
     var inventoryType = typeof(IInventory<Product>);

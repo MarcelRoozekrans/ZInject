@@ -1,6 +1,6 @@
-using ZeroInject;
+using ZInject;
 
-namespace ZeroInject.Sample.UseCases;
+namespace ZInject.Sample.UseCases;
 
 // --- Domain model ---
 public record Product(int Id, string Name, decimal Price);

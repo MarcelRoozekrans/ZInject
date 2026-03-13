@@ -1,6 +1,6 @@
-using ZeroInject;
+using ZInject;
 
-namespace ZeroInject.Sample.UseCases;
+namespace ZInject.Sample.UseCases;
 
 // --- Open-generic repository (standalone container resolves this at runtime) ---
 public interface IInventory<T>

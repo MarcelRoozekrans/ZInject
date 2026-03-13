@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ZeroInject.Container;
+namespace ZInject.Container;
 
-public abstract class ZeroInjectServiceProviderBase : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
+public abstract class ZInjectServiceProviderBase : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
 {
     private readonly IServiceProvider _fallback;
     private int _disposed;
 
-    protected ZeroInjectServiceProviderBase(IServiceProvider fallback)
+    protected ZInjectServiceProviderBase(IServiceProvider fallback)
     {
         _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
     }
@@ -54,7 +54,7 @@ public abstract class ZeroInjectServiceProviderBase : IServiceProvider, IService
         return CreateScopeCore(fallbackScope);
     }
 
-    protected abstract ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope);
+    protected abstract ZInjectScope CreateScopeCore(IServiceScope fallbackScope);
 
     public void Dispose()
     {

@@ -2,7 +2,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ZeroInject.Benchmarks;
+namespace ZInject.Benchmarks;
 
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net90)]
@@ -27,17 +27,17 @@ public class RegistrationBenchmarks
         return services;
     }
 
-    [Benchmark(Description = "ZeroInject Container: Build provider")]
-    public IServiceProvider ZeroInject_ContainerBuild()
+    [Benchmark(Description = "ZInject Container: Build provider")]
+    public IServiceProvider ZInject_ContainerBuild()
     {
         var services = new ServiceCollection();
-        services.AddZeroInjectBenchmarksServices();
-        return services.BuildZeroInjectServiceProvider();
+        services.AddZInjectBenchmarksServices();
+        return services.BuildZInjectServiceProvider();
     }
 
     [Benchmark(Description = "Standalone: Direct instantiation")]
     public IServiceProvider Standalone_DirectInstantiation()
     {
-        return new ZeroInject.Generated.ZeroInjectBenchmarksStandaloneServiceProvider();
+        return new ZInject.Generated.ZInjectBenchmarksStandaloneServiceProvider();
     }
 }

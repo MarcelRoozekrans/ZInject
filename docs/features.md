@@ -1,4 +1,4 @@
-# ZeroInject — Feature Status
+# ZInject — Feature Status
 
 Last updated: 2026-03-12
 
@@ -23,7 +23,7 @@ Last updated: 2026-03-12
 | `IDisposable` / `IAsyncDisposable` | ✅ | ✅ | Singletons + scoped services disposed in reverse order |
 | Constructor parameter resolution | ✅ | ✅ | Auto-resolved via `GetService` / `GetRequiredService` |
 | `[ActivatorUtilitiesConstructor]` | ✅ | ✅ | Disambiguates multiple public constructors (ZI009) |
-| Assembly-level method name override | ✅ | ✅ | `[assembly: ZeroInject("AddCustomName")]` |
+| Assembly-level method name override | ✅ | ✅ | `[assembly: ZInject("AddCustomName")]` |
 | Filtered system interfaces | ✅ | ✅ | `IDisposable`, `IEquatable<T>`, etc. excluded |
 | `IServiceProviderIsService` | ✅ | ✅ | Generated `IsKnownService` type-check; hybrid delegates to fallback |
 | Scoped thread safety | ✅ | ✅ | Matches MS DI contract — scopes are per-request, not thread-safe |

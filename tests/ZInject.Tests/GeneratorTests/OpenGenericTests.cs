@@ -1,4 +1,4 @@
-namespace ZeroInject.Tests.GeneratorTests;
+namespace ZInject.Tests.GeneratorTests;
 
 public class OpenGenericTests
 {
@@ -6,7 +6,7 @@ public class OpenGenericTests
     public void OpenGeneric_GeneratesServiceDescriptor()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepository<T> { }
@@ -24,7 +24,7 @@ public class OpenGenericTests
     public void OpenGeneric_WithAs_NarrowsRegistration()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IReadRepo<T> { }
@@ -44,7 +44,7 @@ public class OpenGenericTests
     public void OpenGeneric_DefaultTryAdd_UsesTryAdd()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepository<T> { }
@@ -62,7 +62,7 @@ public class OpenGenericTests
     public void MultiTypeParameter_GeneratesCorrectUnboundForm()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepository<TKey, TValue> { }
@@ -80,7 +80,7 @@ public class OpenGenericTests
     public void OpenGeneric_AllowMultiple_UsesAdd()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo<T> { }

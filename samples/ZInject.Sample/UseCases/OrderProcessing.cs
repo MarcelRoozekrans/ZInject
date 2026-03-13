@@ -1,7 +1,7 @@
-using ZeroInject;
-using ZeroInject.Sample.UseCases;
+using ZInject;
+using ZInject.Sample.UseCases;
 
-namespace ZeroInject.Sample.UseCases;
+namespace ZInject.Sample.UseCases;
 
 // --- Scoped order context (one per request) ---
 public interface IOrderContext

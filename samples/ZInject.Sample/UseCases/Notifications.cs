@@ -1,6 +1,6 @@
-using ZeroInject;
+using ZInject;
 
-namespace ZeroInject.Sample.UseCases;
+namespace ZInject.Sample.UseCases;
 
 // --- Singleton email gateway ---
 public interface IEmailGateway

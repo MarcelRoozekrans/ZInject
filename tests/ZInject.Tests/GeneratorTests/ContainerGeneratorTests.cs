@@ -1,4 +1,4 @@
-namespace ZeroInject.Tests.GeneratorTests;
+namespace ZInject.Tests.GeneratorTests;
 
 public class ContainerGeneratorTests
 {
@@ -8,7 +8,7 @@ public class ContainerGeneratorTests
     public void WhenContainerReferenced_GeneratesServiceProvider()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -20,14 +20,14 @@ public class ContainerGeneratorTests
         var (output, diagnostics) = GeneratorTestHelper.RunGeneratorWithContainer(source);
 
         Assert.Contains("TestAssemblyServiceProvider", output);
-        Assert.Contains("ZeroInjectServiceProviderBase", output);
+        Assert.Contains("ZInjectServiceProviderBase", output);
     }
 
     [Fact]
     public void WhenContainerNotReferenced_DoesNotGenerateServiceProvider()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -48,7 +48,7 @@ public class ContainerGeneratorTests
     public void Transient_Parameterless_GeneratesTypeCheckAndNew()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -69,7 +69,7 @@ public class ContainerGeneratorTests
     public void Transient_WithDependencies_GeneratesGetServiceCalls()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -95,7 +95,7 @@ public class ContainerGeneratorTests
     public void Transient_OptionalParameter_GeneratesNullableGetService()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -118,7 +118,7 @@ public class ContainerGeneratorTests
     public void Transient_AllInterfaces_Registered()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -139,7 +139,7 @@ public class ContainerGeneratorTests
     public void Transient_AsProperty_NarrowsRegistration()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -163,7 +163,7 @@ public class ContainerGeneratorTests
     public void Singleton_GeneratesFieldDeclaration()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -181,7 +181,7 @@ public class ContainerGeneratorTests
     public void Singleton_GeneratesInterlockedCompareExchangePattern()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -201,7 +201,7 @@ public class ContainerGeneratorTests
     public void Singleton_WithDependencies_GeneratesGetServiceInNew()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -223,7 +223,7 @@ public class ContainerGeneratorTests
     public void Singleton_MultipleInterfaces_AllTypeChecksShareField()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -249,7 +249,7 @@ public class ContainerGeneratorTests
     public void Scoped_GeneratesFieldInScopeClass()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo { }
@@ -267,7 +267,7 @@ public class ContainerGeneratorTests
     public void ScopeClass_IsNestedSealedClass()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo { }
@@ -278,14 +278,14 @@ public class ContainerGeneratorTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGeneratorWithContainer(source);
 
-        Assert.Contains("private sealed class Scope : global::ZeroInject.Container.ZeroInjectScope", output);
+        Assert.Contains("private sealed class Scope : global::ZInject.Container.ZInjectScope", output);
     }
 
     [Fact]
     public void Scope_TransientsCreateFreshInstances()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -306,7 +306,7 @@ public class ContainerGeneratorTests
     public void Scope_SingletonsDelegateToRoot()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -325,7 +325,7 @@ public class ContainerGeneratorTests
     public void Scope_ScopedServiceUsesLazyInit()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo { }
@@ -345,7 +345,7 @@ public class ContainerGeneratorTests
     public void Scope_ScopedNotResolvedFromRoot()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo { }
@@ -367,7 +367,7 @@ public class ContainerGeneratorTests
     public void MixedLifetimes_AllCorrectlyPlaced()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -402,36 +402,36 @@ public class ContainerGeneratorTests
         Assert.Contains("typeof(global::TestApp.IRepo)", scopeSection);
     }
 
-    // --- Task 9: BuildZeroInjectServiceProvider extension method ---
+    // --- Task 9: BuildZInjectServiceProvider extension method ---
 
     [Fact]
     public void GeneratesBuildExtensionMethod()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             [Transient]
             public class Svc { }
             """;
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
-        Assert.Contains("BuildZeroInjectServiceProvider", output);
+        Assert.Contains("BuildZInjectServiceProvider", output);
         Assert.Contains("this IServiceCollection services", output);
         Assert.Contains("BuildServiceProvider()", output);
     }
 
-    // --- Task 10: ZeroInjectServiceProviderFactory ---
+    // --- Task 10: ZInjectServiceProviderFactory ---
 
     [Fact]
     public void GeneratesServiceProviderFactory()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             [Transient]
             public class Svc { }
             """;
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
-        Assert.Contains("class ZeroInjectServiceProviderFactory", output);
+        Assert.Contains("class ZInjectServiceProviderFactory", output);
         Assert.Contains("IServiceProviderFactory<IServiceCollection>", output);
         Assert.Contains("CreateBuilder", output);
         Assert.Contains("CreateServiceProvider", output);
@@ -443,7 +443,7 @@ public class ContainerGeneratorTests
     public void KeyedService_GeneratesKeyedResolution()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Singleton(Key = "redis")]
@@ -458,7 +458,7 @@ public class ContainerGeneratorTests
     public void KeyedSingleton_GeneratesCachedField()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Singleton(Key = "redis")]
@@ -473,7 +473,7 @@ public class ContainerGeneratorTests
     public void KeyedTransient_InScope_CreatesNewInstance()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Transient(Key = "fast")]
@@ -490,7 +490,7 @@ public class ContainerGeneratorTests
     public void DisposableTransient_InScope_GeneratesTrackDisposable()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             using System;
             namespace TestApp;
             public interface IFoo : IDisposable { }
@@ -507,7 +507,7 @@ public class ContainerGeneratorTests
     public void NonDisposableTransient_InScope_NoTrackDisposable()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IFoo { }
             [Transient]
@@ -521,7 +521,7 @@ public class ContainerGeneratorTests
     public void KeyedService_NotInResolveKnown()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Singleton(Key = "redis")]
@@ -539,7 +539,7 @@ public class ContainerGeneratorTests
     public void KeyedScopedService_GeneratesScopedFieldAndLazyInit()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IRepo { }
             [Scoped(Key = "primary")]
@@ -558,7 +558,7 @@ public class ContainerGeneratorTests
     public void KeyedDisposableTransient_InScope_GeneratesTrackDisposable()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             using System;
             namespace TestApp;
             public interface ICache : IDisposable { }
@@ -575,7 +575,7 @@ public class ContainerGeneratorTests
     public void CreateScopeCore_IsOverridden()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -586,7 +586,7 @@ public class ContainerGeneratorTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGeneratorWithContainer(source);
 
-        Assert.Contains("protected override global::ZeroInject.Container.ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)", output);
+        Assert.Contains("protected override global::ZInject.Container.ZInjectScope CreateScopeCore(IServiceScope fallbackScope)", output);
         Assert.Contains("return new Scope(this, fallbackScope);", output);
     }
 
@@ -596,7 +596,7 @@ public class ContainerGeneratorTests
     public void MultipleKeyedServices_SameInterface_DifferentKeys()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Singleton(Key = "redis")]
@@ -615,7 +615,7 @@ public class ContainerGeneratorTests
     public void KeyedService_WithDependencies_GeneratesGetServiceCalls()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ISerializer { }
             [Transient]
@@ -636,7 +636,7 @@ public class ContainerGeneratorTests
     public void MixedKeyedAndNonKeyed_SameInterface()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Singleton]
@@ -662,7 +662,7 @@ public class ContainerGeneratorTests
     public void ScopedDisposable_GeneratesTrackDisposable()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             using System;
             namespace TestApp;
 
@@ -683,7 +683,7 @@ public class ContainerGeneratorTests
     public void ScopedNonDisposable_DoesNotGenerateTrackDisposable()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo { }
@@ -702,7 +702,7 @@ public class ContainerGeneratorTests
     public void DisposableSingleton_GeneratesRaceDisposalGuard()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             using System;
             namespace TestApp;
 
@@ -724,7 +724,7 @@ public class ContainerGeneratorTests
     public void NonDisposableSingleton_DoesNotGenerateRaceDisposalGuard()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -743,7 +743,7 @@ public class ContainerGeneratorTests
     public void IEnumerable_SingleTransient_GeneratesArrayInResolveKnown()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IFoo { }
@@ -761,7 +761,7 @@ public class ContainerGeneratorTests
     public void IEnumerable_InScope_IncludesAllLifetimes()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IHandler { }
@@ -790,7 +790,7 @@ public class ContainerGeneratorTests
     public void KeyedServices_GeneratesIKeyedServiceProviderSelfResolution()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -810,7 +810,7 @@ public class ContainerGeneratorTests
     public void Hybrid_IsKnownService_EmitsTypeChecks()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Transient]
             public class FooImpl : IFoo { }
@@ -826,7 +826,7 @@ public class ContainerGeneratorTests
     public void Standalone_IsKnownService_EmitsTypeChecks()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Transient]
             public class FooImpl : IFoo { }
@@ -840,7 +840,7 @@ public class ContainerGeneratorTests
     public void IsKnownService_OpenGeneric_EmitsGenericTypeDefinitionCheck()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IRepo<T> { }
             [Transient]
             public class Repo<T> : IRepo<T> { }
@@ -858,7 +858,7 @@ public class ContainerGeneratorTests
     public void IEnumerable_Singleton_DelegatesToGetService()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface ICache { }
@@ -877,7 +877,7 @@ public class ContainerGeneratorTests
     public void IEnumerable_ScopedOnly_ExcludedFromRootResolveKnown()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IRepo { }
@@ -889,7 +889,7 @@ public class ContainerGeneratorTests
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         // Root ResolveKnown should NOT have IEnumerable<IRepo> (scoped excluded)
         var resolveKnownStart = output.IndexOf("protected override object? ResolveKnown");
-        var createScopeStart = output.IndexOf("protected override global::ZeroInject.Container.ZeroInjectScope CreateScopeCore");
+        var createScopeStart = output.IndexOf("protected override global::ZInject.Container.ZInjectScope CreateScopeCore");
         var resolveKnown = output.Substring(resolveKnownStart, createScopeStart - resolveKnownStart);
         Assert.DoesNotContain("IEnumerable<global::TestApp.IRepo>", resolveKnown);
 
@@ -904,7 +904,7 @@ public class ContainerGeneratorTests
     public void WhenContainerReferenced_GeneratesStandaloneProvider()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IFoo { }
             [Transient]
@@ -912,14 +912,14 @@ public class ContainerGeneratorTests
             """;
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         Assert.Contains("TestAssemblyStandaloneServiceProvider", output);
-        Assert.Contains("ZeroInjectStandaloneProvider", output);
+        Assert.Contains("ZInjectStandaloneProvider", output);
     }
 
     [Fact]
     public void Standalone_HasParameterlessConstructor()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IFoo { }
             [Transient]
@@ -934,7 +934,7 @@ public class ContainerGeneratorTests
     public void Standalone_ScopeInheritsFromStandaloneScope()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IFoo { }
             [Transient]
@@ -942,14 +942,14 @@ public class ContainerGeneratorTests
             """;
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         var standaloneSection = output.Substring(output.IndexOf("TestAssemblyStandaloneServiceProvider"));
-        Assert.Contains("ZeroInjectStandaloneScope", standaloneSection);
+        Assert.Contains("ZInjectStandaloneScope", standaloneSection);
     }
 
     [Fact]
     public void Standalone_CreateScopeCore_NoFallbackParameter()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IFoo { }
             [Transient]
@@ -957,7 +957,7 @@ public class ContainerGeneratorTests
             """;
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         var standaloneSection = output.Substring(output.IndexOf("TestAssemblyStandaloneServiceProvider"));
-        Assert.Contains("protected override global::ZeroInject.Container.ZeroInjectStandaloneScope CreateScopeCore()", standaloneSection);
+        Assert.Contains("protected override global::ZInject.Container.ZInjectStandaloneScope CreateScopeCore()", standaloneSection);
         Assert.DoesNotContain("IServiceScope fallbackScope", standaloneSection);
     }
 
@@ -965,7 +965,7 @@ public class ContainerGeneratorTests
     public void Standalone_ResolveKnown_SameAsHybrid()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IFoo { }
             [Transient]
@@ -983,7 +983,7 @@ public class ContainerGeneratorTests
     public void Standalone_ScopeConstructor_NoFallbackScope()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface IRepo { }
             [Scoped]
@@ -1000,7 +1000,7 @@ public class ContainerGeneratorTests
     public void Standalone_DisposableSingleton_GeneratesDisposeOverride()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             using System;
             namespace TestApp;
             public interface ICache { }
@@ -1020,7 +1020,7 @@ public class ContainerGeneratorTests
     public void Standalone_DisposableSingleton_GeneratesDisposeAsyncOverride()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             using System;
             namespace TestApp;
             public interface ICache { }
@@ -1040,7 +1040,7 @@ public class ContainerGeneratorTests
     public void Standalone_NonDisposableSingleton_NoDisposeOverride()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
             public interface ICache { }
             [Singleton]
@@ -1055,7 +1055,7 @@ public class ContainerGeneratorTests
     public void IEnumerable_MultipleTransients_GeneratesArrayWithAll()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             namespace TestApp;
 
             public interface IHandler { }
@@ -1079,7 +1079,7 @@ public class ContainerGeneratorTests
     public void HybridContainer_Decorator_NonGeneric_WrapsInTypeSwitch()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Transient]
             public class FooImpl : IFoo { }
@@ -1108,7 +1108,7 @@ public class ContainerGeneratorTests
     public void Standalone_OpenGeneric_EmitsDelegateCacheAndFactoryMethod()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
@@ -1125,7 +1125,7 @@ public class ContainerGeneratorTests
     public void Standalone_OpenGeneric_ResolveKnown_EmitsInlineIfChain()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
@@ -1144,7 +1144,7 @@ public class ContainerGeneratorTests
     public void Standalone_Decorator_NonGeneric_WrapsInTypeSwitch()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IFoo { }
             [Transient]
             public class FooImpl : IFoo { }
@@ -1167,7 +1167,7 @@ public class ContainerGeneratorTests
     public void Standalone_OpenGeneric_WithDecorator_EmitsDecoratedFactoryMethod()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
@@ -1188,7 +1188,7 @@ public class ContainerGeneratorTests
     public void Standalone_MultiDecorator_EmitsChainingInResolveKnown()
     {
         var source = """
-            using ZeroInject;
+            using ZInject;
             public interface IRepo { }
             [Transient]
             public class ConcreteRepo : IRepo { }

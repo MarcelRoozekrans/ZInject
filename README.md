@@ -1,4 +1,4 @@
-# ZeroInject
+# ZInject
 
 Compile-time DI registration for .NET. A Roslyn source generator that auto-discovers services via attributes and generates `IServiceCollection` extension methods. No reflection, no runtime scanning.
 
@@ -7,14 +7,14 @@ Compile-time DI registration for .NET. A Roslyn source generator that auto-disco
 Install both packages:
 
 ```
-dotnet add package ZeroInject
-dotnet add package ZeroInject.Generator
+dotnet add package ZInject
+dotnet add package ZInject.Generator
 ```
 
 Decorate your services:
 
 ```csharp
-using ZeroInject;
+using ZInject;
 
 [Transient]
 public class OrderService : IOrderService { }
@@ -93,12 +93,12 @@ public class Repository<T> : IRepository<T> { }
 Override the generated method name with an assembly-level attribute:
 
 ```csharp
-[assembly: ZeroInject("AddDomainServices")]
+[assembly: ZInject("AddDomainServices")]
 ```
 
 ## Diagnostics
 
-ZeroInject reports issues at compile time:
+ZInject reports issues at compile time:
 
 | ID | Severity | Description |
 |---|---|---|
@@ -115,19 +115,19 @@ ZeroInject reports issues at compile time:
 
 ## Generated Container
 
-ZeroInject can replace the default MS DI container with a source-generated `IServiceProvider`. This eliminates reflection-based resolution at runtime. Two modes are available depending on whether you need MS DI integration.
+ZInject can replace the default MS DI container with a source-generated `IServiceProvider`. This eliminates reflection-based resolution at runtime. Two modes are available depending on whether you need MS DI integration.
 
 ### Installation
 
-Add the `ZeroInject.Container` package alongside the existing packages:
+Add the `ZInject.Container` package alongside the existing packages:
 
 ```
-dotnet add package ZeroInject
-dotnet add package ZeroInject.Generator
-dotnet add package ZeroInject.Container
+dotnet add package ZInject
+dotnet add package ZInject.Generator
+dotnet add package ZInject.Container
 ```
 
-When the generator detects a reference to `ZeroInject.Container`, it automatically emits two generated provider classes per assembly.
+When the generator detects a reference to `ZInject.Container`, it automatically emits two generated provider classes per assembly.
 
 ### Hybrid Mode (MS DI integration)
 
@@ -138,7 +138,7 @@ Wraps the generated container around an MS DI fallback. Unknown service types (f
 var services = new ServiceCollection();
 services.AddMyAppServices(); // Generated registration method
 
-IServiceProvider provider = services.BuildZeroInjectServiceProvider();
+IServiceProvider provider = services.BuildZInjectServiceProvider();
 var myService = provider.GetRequiredService<IMyService>();
 ```
 
@@ -146,7 +146,7 @@ var myService = provider.GetRequiredService<IMyService>();
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMyAppServices();
-builder.Host.UseServiceProviderFactory(new ZeroInjectServiceProviderFactory());
+builder.Host.UseServiceProviderFactory(new ZInjectServiceProviderFactory());
 
 var app = builder.Build();
 ```
@@ -180,14 +180,14 @@ All benchmarks on .NET 9.0.14, BenchmarkDotNet v0.14.0, Windows 11, X64 RyuJIT A
 | Method | Mean | Allocated |
 |---|---:|---:|
 | MS DI — `BuildServiceProvider()` | 177 ns | 528 B |
-| ZeroInject Container — `BuildZeroInjectServiceProvider()` | 9,584 ns | 9,296 B |
+| ZInject Container — `BuildZInjectServiceProvider()` | 9,584 ns | 9,296 B |
 | Standalone — `new MyAppStandaloneServiceProvider()` | **9 ns** | **40 B** |
 
 The hybrid container has a one-time build cost (generating internal data structures). The standalone provider has virtually none.
 
 ### Resolution
 
-| Scenario | MS DI | ZeroInject Container | Standalone |
+| Scenario | MS DI | ZInject Container | Standalone |
 |---|---:|---:|---:|
 | Transient (no deps) | 21 ns | **11 ns** | 13 ns |
 | Transient (1 dep) | 44 ns | 34 ns | **34 ns** |
@@ -203,7 +203,7 @@ The standalone provider's `CreateScope` is ~2× faster and uses ~60% less memory
 
 ## How It Compares to Scrutor
 
-| | ZeroInject | Scrutor |
+| | ZInject | Scrutor |
 |---|---|---|
 | Discovery | Compile-time source gen | Runtime assembly scanning |
 | Reflection | None | Yes |

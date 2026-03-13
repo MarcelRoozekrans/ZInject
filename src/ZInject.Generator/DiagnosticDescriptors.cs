@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace ZeroInject.Generator
+namespace ZInject.Generator
 {
     internal static class DiagnosticDescriptors
     {
@@ -8,7 +8,7 @@ namespace ZeroInject.Generator
             "ZI001",
             "Multiple lifetime attributes",
             "Class '{0}' has multiple lifetime attributes; only one of [Transient], [Scoped], or [Singleton] is allowed",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -16,7 +16,7 @@ namespace ZeroInject.Generator
             "ZI002",
             "Attribute on non-class type",
             "'{0}' is not a class; service attributes can only be applied to classes",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -24,7 +24,7 @@ namespace ZeroInject.Generator
             "ZI003",
             "Attribute on abstract or static class",
             "Class '{0}' is abstract or static and cannot be registered as a service",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -32,7 +32,7 @@ namespace ZeroInject.Generator
             "ZI004",
             "As type not implemented",
             "Class '{0}' does not implement '{1}' specified in the As property",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -40,7 +40,7 @@ namespace ZeroInject.Generator
             "ZI005",
             "Keyed services require .NET 8+",
             "Class '{0}' uses Key property but the target framework does not support keyed services (requires .NET 8+)",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -48,7 +48,7 @@ namespace ZeroInject.Generator
             "ZI006",
             "No public constructor",
             "Class '{0}' has no public constructor; the DI container requires a public constructor to resolve this service",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
@@ -56,7 +56,7 @@ namespace ZeroInject.Generator
             "ZI007",
             "No interfaces implemented",
             "Class '{0}' implements no interfaces and will only be registered as its concrete type",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
@@ -64,7 +64,7 @@ namespace ZeroInject.Generator
             "ZI008",
             "Missing DI abstractions",
             "Microsoft.Extensions.DependencyInjection.Abstractions is not referenced and generated code will not compile",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
@@ -72,7 +72,7 @@ namespace ZeroInject.Generator
             "ZI009",
             "Multiple public constructors without [ActivatorUtilitiesConstructor]",
             "Class '{0}' has multiple public constructors; apply [ActivatorUtilitiesConstructor] to the preferred constructor",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -80,7 +80,7 @@ namespace ZeroInject.Generator
             "ZI010",
             "Constructor parameter is a primitive/value type",
             "Constructor parameter '{0}' of class '{1}' is a primitive/value type ({2}); use IOptions<T> or a wrapper type instead",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -88,7 +88,7 @@ namespace ZeroInject.Generator
             "ZI011",
             "Decorator has no matching interface",
             "Class '{0}' is marked [Decorator] but no constructor parameter type matches any interface it implements",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -96,7 +96,7 @@ namespace ZeroInject.Generator
             "ZI012",
             "Decorator inner service not found",
             "Class '{0}' is marked [Decorator] for '{1}' but no service implementing that interface is registered in this assembly",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -104,7 +104,7 @@ namespace ZeroInject.Generator
             "ZI013",
             "Decorator on abstract or static class",
             "Class '{0}' is abstract or static and cannot be used as a decorator",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
@@ -112,7 +112,7 @@ namespace ZeroInject.Generator
             "ZI014",
             "Circular dependency detected",
             "Circular dependency detected: {0}",
-            "ZeroInject",
+            "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
     }

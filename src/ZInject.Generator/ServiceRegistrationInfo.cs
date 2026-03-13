@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace ZeroInject.Generator
+namespace ZInject.Generator
 {
     internal sealed class ServiceRegistrationInfo : IEquatable<ServiceRegistrationInfo>
     {

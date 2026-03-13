@@ -1,11 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ZeroInject.Tests.ContainerTests;
+namespace ZInject.Tests.ContainerTests;
 
 public class StandaloneProviderBaseTests
 {
     // Minimal concrete subclass for testing the abstract base
-    private sealed class TestProvider : ZeroInject.Container.ZeroInjectStandaloneProvider
+    private sealed class TestProvider : ZInject.Container.ZInjectStandaloneProvider
     {
         protected override object? ResolveKnown(Type serviceType)
         {
@@ -16,15 +16,15 @@ public class StandaloneProviderBaseTests
 
         protected override bool IsKnownService(Type serviceType) => false;
 
-        protected override ZeroInject.Container.ZeroInjectStandaloneScope CreateScopeCore()
+        protected override ZInject.Container.ZInjectStandaloneScope CreateScopeCore()
         {
             return new TestScope(this);
         }
     }
 
-    private sealed class TestScope : ZeroInject.Container.ZeroInjectStandaloneScope
+    private sealed class TestScope : ZInject.Container.ZInjectStandaloneScope
     {
-        public TestScope(ZeroInject.Container.ZeroInjectStandaloneProvider root) : base(root) { }
+        public TestScope(ZInject.Container.ZInjectStandaloneProvider root) : base(root) { }
 
         protected override object? ResolveScopedKnown(Type serviceType)
         {

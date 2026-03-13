@@ -2,7 +2,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ZeroInject.Benchmarks;
+namespace ZInject.Benchmarks;
 
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net90)]
@@ -30,13 +30,13 @@ public class ResolutionBenchmarks
         msDiServices.AddTransient(typeof(IGenericRepo<>), typeof(GenericRepo<>));
         _msDiProvider = msDiServices.BuildServiceProvider();
 
-        // ZeroInject Container (generated container)
+        // ZInject Container (generated container)
         var containerServices = new ServiceCollection();
-        containerServices.AddZeroInjectBenchmarksServices();
-        _containerProvider = containerServices.BuildZeroInjectServiceProvider();
+        containerServices.AddZInjectBenchmarksServices();
+        _containerProvider = containerServices.BuildZInjectServiceProvider();
 
-        // ZeroInject Standalone provider
-        _standaloneProvider = new ZeroInject.Generated.ZeroInjectBenchmarksStandaloneServiceProvider();
+        // ZInject Standalone provider
+        _standaloneProvider = new ZInject.Generated.ZInjectBenchmarksStandaloneServiceProvider();
     }
 
     [GlobalCleanup]
@@ -54,7 +54,7 @@ public class ResolutionBenchmarks
     public ISimpleService MsDi_ResolveTransient()
         => _msDiProvider.GetRequiredService<ISimpleService>();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve transient (no deps)")]
+    [Benchmark(Description = "ZInject Container: Resolve transient (no deps)")]
     [BenchmarkCategory("Transient")]
     public ISimpleService Container_ResolveTransient()
         => _containerProvider.GetRequiredService<ISimpleService>();
@@ -71,7 +71,7 @@ public class ResolutionBenchmarks
     public IServiceWithDep MsDi_ResolveWithDep()
         => _msDiProvider.GetRequiredService<IServiceWithDep>();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve transient (1 dep)")]
+    [Benchmark(Description = "ZInject Container: Resolve transient (1 dep)")]
     [BenchmarkCategory("TransientWithDep")]
     public IServiceWithDep Container_ResolveWithDep()
         => _containerProvider.GetRequiredService<IServiceWithDep>();
@@ -88,7 +88,7 @@ public class ResolutionBenchmarks
     public IServiceWithMultipleDeps MsDi_ResolveMultipleDeps()
         => _msDiProvider.GetRequiredService<IServiceWithMultipleDeps>();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve transient (2 deps)")]
+    [Benchmark(Description = "ZInject Container: Resolve transient (2 deps)")]
     [BenchmarkCategory("TransientMultiDep")]
     public IServiceWithMultipleDeps Container_ResolveMultipleDeps()
         => _containerProvider.GetRequiredService<IServiceWithMultipleDeps>();
@@ -105,7 +105,7 @@ public class ResolutionBenchmarks
     public ISingletonService MsDi_ResolveSingleton()
         => _msDiProvider.GetRequiredService<ISingletonService>();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve singleton")]
+    [Benchmark(Description = "ZInject Container: Resolve singleton")]
     [BenchmarkCategory("Singleton")]
     public ISingletonService Container_ResolveSingleton()
         => _containerProvider.GetRequiredService<ISingletonService>();
@@ -142,7 +142,7 @@ public class ResolutionBenchmarks
     public IScopedService MsDi_ResolveScoped()
         => _msDiScope.ServiceProvider.GetRequiredService<IScopedService>();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve scoped")]
+    [Benchmark(Description = "ZInject Container: Resolve scoped")]
     [BenchmarkCategory("Scoped")]
     public IScopedService Container_ResolveScoped()
         => _containerScope.ServiceProvider.GetRequiredService<IScopedService>();
@@ -159,7 +159,7 @@ public class ResolutionBenchmarks
     public IMultiService[] MsDi_ResolveEnumerable()
         => _msDiProvider.GetRequiredService<IEnumerable<IMultiService>>().ToArray();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve IEnumerable<T>")]
+    [Benchmark(Description = "ZInject Container: Resolve IEnumerable<T>")]
     [BenchmarkCategory("Enumerable")]
     public IMultiService[] Container_ResolveEnumerable()
         => _containerProvider.GetRequiredService<IEnumerable<IMultiService>>().ToArray();
@@ -176,7 +176,7 @@ public class ResolutionBenchmarks
     public IDecoratedService MsDi_ResolveDecorated()
         => _msDiProvider.GetRequiredService<IDecoratedService>();
 
-    [Benchmark(Description = "ZeroInject Container: Resolve decorated transient")]
+    [Benchmark(Description = "ZInject Container: Resolve decorated transient")]
     [BenchmarkCategory("Decorator")]
     public IDecoratedService Container_ResolveDecorated()
         => _containerProvider.GetRequiredService<IDecoratedService>();
@@ -209,7 +209,7 @@ public class ResolutionBenchmarks
         return scope;
     }
 
-    [Benchmark(Description = "ZeroInject Container: Create scope")]
+    [Benchmark(Description = "ZInject Container: Create scope")]
     [BenchmarkCategory("ScopeCreation")]
     public IServiceScope Container_CreateScope()
     {
