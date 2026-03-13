@@ -69,4 +69,76 @@ public class DecoratorGeneratorTests
         var (output, _) = GeneratorTestHelper.RunGenerator(source);
         Assert.Contains("TryAddTransient<global::IFoo>", output);
     }
+
+    [Fact]
+    public void MultiDecorator_TwoDecorators_ChainsInRegistrationOrder()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IRepo { }
+            [Transient]
+            public class ConcreteRepo : IRepo { }
+            [Decorator]
+            public class CachingRepo : IRepo
+            {
+                public CachingRepo(IRepo inner) { }
+            }
+            [Decorator]
+            public class LoggingRepo : IRepo
+            {
+                public LoggingRepo(IRepo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("new global::LoggingRepo(", output);
+        Assert.Contains("new global::CachingRepo(", output);
+        Assert.Contains("new global::ConcreteRepo()", output);
+    }
+
+    [Fact]
+    public void MultiDecorator_ThreeDecorators_ChainsAll()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IRepo { }
+            [Transient]
+            public class ConcreteRepo : IRepo { }
+            [Decorator]
+            public class CachingRepo : IRepo { public CachingRepo(IRepo inner) { } }
+            [Decorator]
+            public class LoggingRepo : IRepo { public LoggingRepo(IRepo inner) { } }
+            [Decorator]
+            public class RetryRepo : IRepo { public RetryRepo(IRepo inner) { } }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("new global::RetryRepo(", output);
+        Assert.Contains("new global::LoggingRepo(", output);
+        Assert.Contains("new global::CachingRepo(", output);
+    }
+
+    [Fact]
+    public void MultiDecorator_WithExtraDeps_InjectsAllDeps()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IRepo { }
+            public interface ILogger { }
+            public interface ICache { }
+            [Transient] public class RepoImpl : IRepo { }
+            [Singleton] public class Logger : ILogger { }
+            [Singleton] public class Cache : ICache { }
+            [Decorator]
+            public class CachingRepo : IRepo { public CachingRepo(IRepo inner, ICache cache) { } }
+            [Decorator]
+            public class LoggingRepo : IRepo { public LoggingRepo(IRepo inner, ILogger logger) { } }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains("GetRequiredService<global::ICache>", output);
+        Assert.Contains("GetRequiredService<global::ILogger>", output);
+    }
 }

@@ -201,10 +201,17 @@ namespace ZeroInject.Generator
                     validDecorators.Add(dec);
                 }
 
-                // Build dictionary: decorated interface FQN → decorator info
-                var decoratorsByInterface = new System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo>();
+                // Build dictionary: decorated interface FQN → list of decorator infos
+                var decoratorsByInterface = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>>();
                 foreach (var dec in validDecorators)
-                    decoratorsByInterface[dec.DecoratedInterfaceFqn!] = dec;
+                {
+                    if (!decoratorsByInterface.TryGetValue(dec.DecoratedInterfaceFqn!, out var list))
+                    {
+                        list = new System.Collections.Generic.List<DecoratorRegistrationInfo>();
+                        decoratorsByInterface[dec.DecoratedInterfaceFqn!] = list;
+                    }
+                    list.Add(dec);
+                }
 
                 if (allServices.Count == 0)
                 {
@@ -478,7 +485,7 @@ namespace ZeroInject.Generator
             List<ServiceRegistrationInfo> services,
             string assemblyName,
             string? methodNameOverride,
-            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
         {
             string methodName;
             if (methodNameOverride != null)
@@ -584,7 +591,7 @@ namespace ZeroInject.Generator
         private static void EmitRegistration(
             StringBuilder sb,
             ServiceRegistrationInfo svc,
-            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
         {
             var lifetime = svc.Lifetime;
             var fqn = svc.FullyQualifiedName;
@@ -600,10 +607,10 @@ namespace ZeroInject.Generator
             // Register all non-filtered interfaces, wrapping with decorator when applicable
             foreach (var iface in svc.Interfaces)
             {
-                if (!svc.IsOpenGeneric && decoratorsByInterface.TryGetValue(iface, out var decorator))
+                if (!svc.IsOpenGeneric && decoratorsByInterface.TryGetValue(iface, out var decorators))
                 {
-                    // Emit factory wrapping: sp => new Decorator(sp.GetRequiredService<Impl>(), ...)
-                    var decoratorFactory = BuildDecoratorFactoryLambda(decorator, fqn);
+                    // Emit factory wrapping with chained decorators
+                    var decoratorFactory = BuildDecoratorFactoryLambdaChained(decorators, fqn);
                     sb.AppendLine(string.Format(
                         "            services.Add{0}<{1}>({2});",
                         lifetime, iface, decoratorFactory));
@@ -618,33 +625,40 @@ namespace ZeroInject.Generator
             EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
         }
 
-        private static string BuildDecoratorFactoryLambda(
-            DecoratorRegistrationInfo decorator,
+        private static string BuildDecoratorFactoryLambdaChained(
+            List<DecoratorRegistrationInfo> decorators,
             string innerConcreteFqn)
         {
-            // sp => new LoggingFoo(sp.GetRequiredService<FooImpl>(), sp.GetRequiredService<ILogger>())
-            var sb = new StringBuilder();
-            sb.Append("sp => new ");
-            sb.Append(decorator.DecoratorFqn);
-            sb.Append("(");
-            bool first = true;
-            foreach (var param in decorator.ConstructorParameters)
+            // Build the innermost expression: sp.GetRequiredService<ConcreteType>()
+            var currentExpr = "sp.GetRequiredService<" + innerConcreteFqn + ">()";
+
+            // Chain each decorator: first wraps concrete, each subsequent wraps previous
+            foreach (var decorator in decorators)
             {
-                if (!first) sb.Append(", ");
-                first = false;
-                if (param.FullyQualifiedTypeName == decorator.DecoratedInterfaceFqn)
+                var sb = new StringBuilder();
+                sb.Append("new ");
+                sb.Append(decorator.DecoratorFqn);
+                sb.Append("(");
+                bool first = true;
+                foreach (var param in decorator.ConstructorParameters)
                 {
-                    // Inner service param: resolve by concrete type
-                    sb.Append("sp.GetRequiredService<").Append(innerConcreteFqn).Append(">()");
+                    if (!first) sb.Append(", ");
+                    first = false;
+                    if (param.FullyQualifiedTypeName == decorator.DecoratedInterfaceFqn)
+                    {
+                        sb.Append(currentExpr);
+                    }
+                    else
+                    {
+                        var method = param.IsOptional ? "GetService" : "GetRequiredService";
+                        sb.Append("sp.").Append(method).Append("<").Append(param.FullyQualifiedTypeName).Append(">()");
+                    }
                 }
-                else
-                {
-                    var method = param.IsOptional ? "GetService" : "GetRequiredService";
-                    sb.Append("sp.").Append(method).Append("<").Append(param.FullyQualifiedTypeName).Append(">()");
-                }
+                sb.Append(")");
+                currentExpr = sb.ToString();
             }
-            sb.Append(")");
-            return sb.ToString();
+
+            return "sp => " + currentExpr;
         }
 
         private static void EmitSingleRegistration(
@@ -689,15 +703,21 @@ namespace ZeroInject.Generator
         private static string BuildDecoratedNewExpression(
             ServiceRegistrationInfo svc,
             string serviceTypeFqn,
-            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface,
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface,
             bool forScope)
         {
             var baseExpr = forScope ? BuildNewExpressionForScope(svc) : BuildNewExpression(svc);
-            if (decoratorsByInterface.TryGetValue(serviceTypeFqn, out var decorator))
+            if (!decoratorsByInterface.TryGetValue(serviceTypeFqn, out var decorators))
+                return baseExpr;
+
+            // Chain decorators: first wraps concrete, each subsequent wraps previous
+            var currentExpr = baseExpr;
+            foreach (var decorator in decorators)
             {
-                return BuildNewExpressionWithDecorator(decorator, svc.FullyQualifiedName, baseExpr, decorator.DecoratedInterfaceFqn!);
+                currentExpr = BuildNewExpressionWithDecorator(
+                    decorator, svc.FullyQualifiedName, currentExpr, decorator.DecoratedInterfaceFqn!);
             }
-            return baseExpr;
+            return currentExpr;
         }
 
         private static string BuildNewExpressionWithDecorator(
@@ -729,7 +749,7 @@ namespace ZeroInject.Generator
         private static string GenerateServiceProviderClass(
             List<ServiceRegistrationInfo> services,
             string assemblyName,
-            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
         {
             // Clean assembly name for class naming
             var cleanName = new StringBuilder();
@@ -1047,9 +1067,11 @@ namespace ZeroInject.Generator
                 // Emit a cached-decorator field for each scoped service that has a decorated interface
                 foreach (var st in GetServiceTypes(scopeds[i]))
                 {
-                    if (decoratorsByInterface.TryGetValue(st, out var dec))
+                    if (decoratorsByInterface.TryGetValue(st, out var decList))
                     {
-                        sb.AppendLine("            private " + dec.DecoratorFqn + "? _scoped_" + i + "_d;");
+                        // Use the outermost decorator type for the cached field
+                        var outermost = decList[decList.Count - 1];
+                        sb.AppendLine("            private " + outermost.DecoratorFqn + "? _scoped_" + i + "_d;");
                         break;
                     }
                 }
@@ -1134,13 +1156,17 @@ namespace ZeroInject.Generator
 
                     sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
                     sb.AppendLine("                {");
-                    if (decoratorsByInterface.TryGetValue(serviceType, out var scopedDecorator))
+                    if (decoratorsByInterface.TryGetValue(serviceType, out var scopedDecoratorList))
                     {
-                        // Decorated interface: cache the inner concrete, cache the decorator wrapper
-                        var decoratedExpr = BuildNewExpressionWithDecorator(scopedDecorator, svc.FullyQualifiedName,
-                            "(" + svc.FullyQualifiedName + ")" + fieldName, serviceType);
+                        // Decorated interface: cache the inner concrete, chain decorators, cache the outermost
+                        var currentExpr = "(" + svc.FullyQualifiedName + ")" + fieldName;
+                        foreach (var dec in scopedDecoratorList)
+                        {
+                            currentExpr = BuildNewExpressionWithDecorator(dec, svc.FullyQualifiedName,
+                                currentExpr, serviceType);
+                        }
                         sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
-                        sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + decoratedExpr + "; TrackDisposable(" + fieldName + "_d); }");
+                        sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + currentExpr + "; TrackDisposable(" + fieldName + "_d); }");
                         sb.AppendLine("                    return " + fieldName + "_d;");
                     }
                     else if (svc.ImplementsDisposable)
@@ -1326,7 +1352,7 @@ namespace ZeroInject.Generator
         private static string GenerateStandaloneServiceProviderClass(
             List<ServiceRegistrationInfo> services,
             string assemblyName,
-            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
         {
             // Clean assembly name for class naming
             var cleanName = new StringBuilder();
@@ -1478,13 +1504,26 @@ namespace ZeroInject.Generator
                     int arity = int.Parse(svc.OpenGenericArity!);
                     var typeParams = BuildOpenGenericTypeParams(arity);
                     var ifaces = svc.AsType != null ? new List<string> { svc.AsType } : svc.Interfaces;
-                    DecoratorRegistrationInfo? decorator = null;
+                    List<DecoratorRegistrationInfo>? decoratorList = null;
                     foreach (var iface in ifaces)
                     {
-                        if (decoratorsByInterface.TryGetValue(iface, out var dec) && dec.IsOpenGeneric)
-                        { decorator = dec; break; }
+                        if (decoratorsByInterface.TryGetValue(iface, out var decList))
+                        {
+                            // Filter to only open generic decorators
+                            var ogDecs = new List<DecoratorRegistrationInfo>();
+                            foreach (var d in decList)
+                            {
+                                if (d.IsOpenGeneric)
+                                    ogDecs.Add(d);
+                            }
+                            if (ogDecs.Count > 0)
+                            {
+                                decoratorList = ogDecs;
+                                break;
+                            }
+                        }
                     }
-                    EmitOpenGenericFactoryMethod(sb, "OG_Factory_" + ogIdx, typeParams, svc, decorator, arity);
+                    EmitOpenGenericFactoryMethod(sb, "OG_Factory_" + ogIdx, typeParams, svc, decoratorList, arity);
                 }
                 sb.AppendLine();
             }
@@ -1743,9 +1782,11 @@ namespace ZeroInject.Generator
                 // Emit a cached-decorator field for each scoped service that has a decorated interface
                 foreach (var st in GetServiceTypes(scopeds[i]))
                 {
-                    if (decoratorsByInterface.TryGetValue(st, out var dec))
+                    if (decoratorsByInterface.TryGetValue(st, out var decList))
                     {
-                        sb.AppendLine("            private " + dec.DecoratorFqn + "? _scoped_" + i + "_d;");
+                        // Use the outermost decorator type for the cached field
+                        var outermost = decList[decList.Count - 1];
+                        sb.AppendLine("            private " + outermost.DecoratorFqn + "? _scoped_" + i + "_d;");
                         break;
                     }
                 }
@@ -1830,13 +1871,17 @@ namespace ZeroInject.Generator
 
                     sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
                     sb.AppendLine("                {");
-                    if (decoratorsByInterface.TryGetValue(serviceType, out var scopedDecorator))
+                    if (decoratorsByInterface.TryGetValue(serviceType, out var scopedDecoratorList))
                     {
-                        // Decorated interface: cache the inner concrete, cache the decorator wrapper
-                        var decoratedExpr = BuildNewExpressionWithDecorator(scopedDecorator, svc.FullyQualifiedName,
-                            "(" + svc.FullyQualifiedName + ")" + fieldName, serviceType);
+                        // Decorated interface: cache the inner concrete, chain decorators, cache the outermost
+                        var currentExpr = "(" + svc.FullyQualifiedName + ")" + fieldName;
+                        foreach (var dec in scopedDecoratorList)
+                        {
+                            currentExpr = BuildNewExpressionWithDecorator(dec, svc.FullyQualifiedName,
+                                currentExpr, serviceType);
+                        }
                         sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
-                        sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + decoratedExpr + "; TrackDisposable(" + fieldName + "_d); }");
+                        sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + currentExpr + "; TrackDisposable(" + fieldName + "_d); }");
                         sb.AppendLine("                    return " + fieldName + "_d;");
                     }
                     else if (svc.ImplementsDisposable)
@@ -2143,28 +2188,43 @@ namespace ZeroInject.Generator
             string methodName,
             string typeParams,
             ServiceRegistrationInfo svc,
-            DecoratorRegistrationInfo? decorator,
+            List<DecoratorRegistrationInfo>? decorators,
             int arity)
         {
             var closedImpl = CloseGenericFqn(svc.FullyQualifiedName, arity);
             var innerExpr = BuildOpenGenericNewExpr(closedImpl, svc.ConstructorParameters, null, null, arity);
 
-            if (decorator == null)
+            if (decorators == null || decorators.Count == 0)
             {
                 sb.AppendLine("        private static object " + methodName + typeParams + "(global::System.IServiceProvider sp)");
                 sb.AppendLine("            => " + innerExpr + ";");
                 return;
             }
 
-            // Decorator case: emit block body using a local var for the inner instance
-            var closedDecorator = CloseGenericFqn(decorator.DecoratorFqn, arity);
-            var decoratedIface = decorator.DecoratedInterfaceFqn;
-            var decoratorExpr = BuildOpenGenericNewExpr(closedDecorator, decorator.ConstructorParameters, decoratedIface, "_inner", arity);
-
+            // Decorator case: emit block body chaining all decorators
             sb.AppendLine("        private static object " + methodName + typeParams + "(global::System.IServiceProvider sp)");
             sb.AppendLine("        {");
-            sb.AppendLine("            var _inner = " + innerExpr + ";");
-            sb.AppendLine("            return " + decoratorExpr + ";");
+            sb.AppendLine("            var _layer0 = " + innerExpr + ";");
+
+            for (int i = 0; i < decorators.Count; i++)
+            {
+                var dec = decorators[i];
+                var closedDecorator = CloseGenericFqn(dec.DecoratorFqn, arity);
+                var decoratedIface = dec.DecoratedInterfaceFqn;
+                var prevVar = "_layer" + i;
+                var decoratorExpr = BuildOpenGenericNewExpr(closedDecorator, dec.ConstructorParameters, decoratedIface, prevVar, arity);
+
+                if (i < decorators.Count - 1)
+                {
+                    var nextVar = "_layer" + (i + 1);
+                    sb.AppendLine("            var " + nextVar + " = " + decoratorExpr + ";");
+                }
+                else
+                {
+                    sb.AppendLine("            return " + decoratorExpr + ";");
+                }
+            }
+
             sb.AppendLine("        }");
         }
 
