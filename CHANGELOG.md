@@ -1,0 +1,52 @@
+# Changelog
+
+## [0.10.0](https://github.com/MarcelRoozekrans/ZInject/compare/v0.9.0...v0.10.0) (2026-03-13)
+
+
+### Features
+
+* add benchmarks with IEnumerable and scope creation scenarios ([cd7222b](https://github.com/MarcelRoozekrans/ZInject/commit/cd7222bd4fe50663b6884f5c64073aff9af453c9))
+* add compile-time diagnostics ZI006 and ZI007 ([8370e95](https://github.com/MarcelRoozekrans/ZInject/commit/8370e95c74b870e2c77d6cc134f73401ada5896c))
+* add constructor analysis and factory lambda emission in GetServiceInfo ([184159c](https://github.com/MarcelRoozekrans/ZInject/commit/184159cea0a0f84040fb742044da3c917c2e17fa))
+* add constructor injection example to sample app ([741a5bd](https://github.com/MarcelRoozekrans/ZInject/commit/741a5bd2fba8e8478749747cf18f479412a72b24))
+* add ConstructorParameterInfo data model and extend ServiceRegistrationInfo ([1d97be4](https://github.com/MarcelRoozekrans/ZInject/commit/1d97be40a302b1520841efc0aefc3e5a9e89d9d7))
+* add core service lifetime attributes and ZeroInject assembly attribute ([2ea5acd](https://github.com/MarcelRoozekrans/ZInject/commit/2ea5acdef993071dc9f7c220e325f00efbcd3b46))
+* add DecoratorAttribute to ZeroInject package ([e126ff7](https://github.com/MarcelRoozekrans/ZInject/commit/e126ff7317ceb7b22a2ba5abf689a254c3771bf4))
+* add DecoratorRegistrationInfo, ZI011-ZI013 diagnostics, and generator pipeline wiring ([6f42647](https://github.com/MarcelRoozekrans/ZInject/commit/6f426470578cd44f27b55350ef6d736e0d02520f))
+* add generator skeleton, test infrastructure, data model, and diagnostic descriptors ([aeee61f](https://github.com/MarcelRoozekrans/ZInject/commit/aeee61f9fcff4ff14e454c15c125a7d8952c2a82))
+* add IEnumerable&lt;T&gt; support, blindspot fixes, and thread-safe scope disposal ([e6edcf7](https://github.com/MarcelRoozekrans/ZInject/commit/e6edcf76a74e7e70c877f10bbd9d329d0f09da96))
+* add net9.0 target and fix conditional MS DI references ([ee74ce8](https://github.com/MarcelRoozekrans/ZInject/commit/ee74ce866a5b1c6eb679f93866a2cc5b7e95bc72))
+* add OpenGenericEntry and runtime open-generic resolution to standalone base classes ([f28c6b2](https://github.com/MarcelRoozekrans/ZInject/commit/f28c6b200da473ae619321ecbb189dced459216c))
+* add standalone provider benchmarks for resolution and registration ([d9b6c5b](https://github.com/MarcelRoozekrans/ZInject/commit/d9b6c5bd68a24888b2339d52286cba61bf0d91d3))
+* add ZeroInject sample application ([da25917](https://github.com/MarcelRoozekrans/ZInject/commit/da2591765fab4077225a9ac5f6e49b52c6698762))
+* add ZeroInject.Container runtime base classes ([7b75997](https://github.com/MarcelRoozekrans/ZInject/commit/7b759976884dbdf3d47d9db61ffef6da729d5a5f))
+* add ZeroInjectStandaloneProvider and ZeroInjectStandaloneScope base classes ([0080be9](https://github.com/MarcelRoozekrans/ZInject/commit/0080be9e74d1a1e6722b8d9b0b85eb341afd6b70))
+* add ZI009 and ZI010 diagnostics for constructor validation ([cec517f](https://github.com/MarcelRoozekrans/ZInject/commit/cec517fa2c7f7047b0cf1ddc702a1ed32295d130))
+* code-gen open-generic delegate factories for ~6x faster standalone resolution ([5fa46fb](https://github.com/MarcelRoozekrans/ZInject/commit/5fa46fb0ae357c4ca29ebb2c792cb16af36960a6))
+* compile-time circular dependency detection (ZI014) ([39577b2](https://github.com/MarcelRoozekrans/ZInject/commit/39577b25671fe4ead63a4399c5e9c8edc603f2cf))
+* emit decorator wrapping and open-generic map in all generator outputs ([bfbeb32](https://github.com/MarcelRoozekrans/ZInject/commit/bfbeb32e972ec62dca2683f111adb3fbd664ef72))
+* emit Dispose/DisposeAsync overrides for standalone provider singletons ([9c6afec](https://github.com/MarcelRoozekrans/ZInject/commit/9c6afec5483fe97b4b1385dab596c55d5f470abb))
+* emit factory lambdas for keyed registrations ([9817583](https://github.com/MarcelRoozekrans/ZInject/commit/98175836aed3ecf2cfadc8d7667a0d7e459c9784))
+* emit IEnumerable&lt;T&gt; checks in scope ResolveScopedKnown ([1dd3ac7](https://github.com/MarcelRoozekrans/ZInject/commit/1dd3ac7d2a03a6dd5d5e3df7855a363a1a6ce235))
+* emit IsKnownService override from generator ([a96a1ff](https://github.com/MarcelRoozekrans/ZInject/commit/a96a1ff3652536282c9d9fb2e26e952959913875))
+* emit standalone provider class from generator ([6132574](https://github.com/MarcelRoozekrans/ZInject/commit/613257452eaa3cc7f42ff8b9d1fb448703940a2f))
+* generate BuildZeroInjectServiceProvider and ZeroInjectServiceProviderFactory ([7ba83a8](https://github.com/MarcelRoozekrans/ZInject/commit/7ba83a85a15afc3b11e3fb1a67d10544d0c69b88))
+* generate IServiceProvider with transient, singleton, and scoped resolution ([fedfc95](https://github.com/MarcelRoozekrans/ZInject/commit/fedfc955ac7b6130d914581ab4ddecaf1ee2f438))
+* implement core source generator with basic service discovery and registration ([70d8d1e](https://github.com/MarcelRoozekrans/ZInject/commit/70d8d1ed94859d3199426544260731e4a73f3ef8))
+* implement IServiceProviderIsKeyedService on all base classes and scopes ([aa01830](https://github.com/MarcelRoozekrans/ZInject/commit/aa018304b662f75dcbb12d961649778452efdee0))
+* implement IServiceProviderIsService on all base classes ([64b30df](https://github.com/MarcelRoozekrans/ZInject/commit/64b30dfb81ad5b142b8c4f7b1ab75b797462560f))
+* scaffold ZeroInject solution structure ([521051c](https://github.com/MarcelRoozekrans/ZInject/commit/521051c92e6090ac0ee36bee1229aa701b6277be))
+* standalone container, production features, rebrand to ZInject ([4b65c9f](https://github.com/MarcelRoozekrans/ZInject/commit/4b65c9ff6f84069a5a80a511c247f4618bcc909b))
+* support multi-decorator stacking with chained wrapping ([e9ff721](https://github.com/MarcelRoozekrans/ZInject/commit/e9ff7211a0994e66eda55022a4d6b961434cd9a3))
+
+
+### Bug Fixes
+
+* add cancellation token check and correct open generic TryAdd semantics ([9e421e0](https://github.com/MarcelRoozekrans/ZInject/commit/9e421e0f49007b5a1e1010d071c4bf588816b8c0))
+* add missing IsKeyedService type check in generator and add generator tests ([968dc7a](https://github.com/MarcelRoozekrans/ZInject/commit/968dc7a15040f2c6012e85280260abf7a4d4db08))
+* address code review issues for keyed services and equality ([6b89c18](https://github.com/MarcelRoozekrans/ZInject/commit/6b89c18a6dbaf73aab87da91570663f302db1ffb))
+* cache keyed singletons and add null-argument validation ([15a71f3](https://github.com/MarcelRoozekrans/ZInject/commit/15a71f32794d6380d781e6a2931f47ebe2ff4d6a))
+* consolidate constructor iteration and complete equality implementations ([748d51f](https://github.com/MarcelRoozekrans/ZInject/commit/748d51fb761761f1744338c603239a73bdca2ebc))
+* GetService returns last registration (last-wins, matching MS DI) ([fdf04e5](https://github.com/MarcelRoozekrans/ZInject/commit/fdf04e5cec5f483ac172eb1180c098d208e8ae8e))
+* resolve all analyzer warnings ([d9f0532](https://github.com/MarcelRoozekrans/ZInject/commit/d9f053202b3385d64d2c2d2c5013062c7cbc6240))
+* use nullable object? for IsKnownKeyedService parameter ([2047324](https://github.com/MarcelRoozekrans/ZInject/commit/2047324806be4eadc7e61546b159eaf6ab2c3dcc))
