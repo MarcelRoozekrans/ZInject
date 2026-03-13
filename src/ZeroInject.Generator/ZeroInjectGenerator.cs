@@ -959,6 +959,10 @@ namespace ZeroInject.Generator
             sb.AppendLine("        }");
             sb.AppendLine();
 
+            // IsKnownService - stub for now; Task 2 will fill in real logic
+            sb.AppendLine("        protected override bool IsKnownService(Type serviceType) => false;");
+            sb.AppendLine();
+
             // Keyed service methods
             if (hasKeyedServices)
             {
@@ -1590,6 +1594,10 @@ namespace ZeroInject.Generator
                 EmitOpenGenericRootResolve(sb, openGenerics, "            ", className);
             sb.AppendLine("            return null;");
             sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // IsKnownService - stub for now; Task 2 will fill in real logic
+            sb.AppendLine("        protected override bool IsKnownService(Type serviceType) => false;");
             sb.AppendLine();
 
             // Keyed service methods

@@ -5,6 +5,7 @@ public class StandaloneScopeTests
     private sealed class TestProvider : ZeroInject.Container.ZeroInjectStandaloneProvider
     {
         protected override object? ResolveKnown(Type serviceType) => null;
+        protected override bool IsKnownService(Type serviceType) => false;
         protected override ZeroInject.Container.ZeroInjectStandaloneScope CreateScopeCore()
             => new TestScope(this);
     }
@@ -119,6 +120,7 @@ public class StandaloneScopeTests
     private class TestScopedOpenGenericProvider : ZeroInject.Container.ZeroInjectStandaloneProvider
     {
         protected override object? ResolveKnown(Type serviceType) => null;
+        protected override bool IsKnownService(Type serviceType) => false;
         protected override ZeroInject.Container.ZeroInjectStandaloneScope CreateScopeCore() => new TestScopedOgScope(this);
 
         private sealed class TestScopedOgScope : ZeroInject.Container.ZeroInjectStandaloneScope

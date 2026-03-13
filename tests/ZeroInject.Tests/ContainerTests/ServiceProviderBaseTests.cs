@@ -25,6 +25,7 @@ public class ServiceProviderBaseTests
         protected override object? ResolveScopedKnown(Type serviceType) => null;
     }
 
+
     private sealed class TestProvider : ZeroInjectServiceProviderBase
     {
         private TestCache? _singleton;
@@ -46,6 +47,8 @@ public class ServiceProviderBaseTests
 
             return null;
         }
+
+        protected override bool IsKnownService(Type serviceType) => false;
 
         protected override ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
@@ -166,5 +169,15 @@ public class ServiceProviderBaseTests
     public void Constructor_null_fallback_throws_ArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() => new TestProvider(null!));
+    }
+
+    [Fact]
+    public void GetService_IServiceProviderIsService_ReturnsSelf()
+    {
+        var fallback = new ServiceCollection().BuildServiceProvider();
+        var provider = new TestProvider(fallback);
+        var result = provider.GetService(typeof(IServiceProviderIsService));
+        Assert.NotNull(result);
+        Assert.Same(provider, result);
     }
 }

@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZeroInject.Container;
 
-public abstract class ZeroInjectStandaloneScope : IServiceScope, IServiceProvider, IDisposable, IAsyncDisposable
+public abstract class ZeroInjectStandaloneScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IDisposable, IAsyncDisposable
 {
     private readonly ZeroInjectStandaloneProvider _root;
     private readonly object _trackLock = new object();
@@ -31,10 +31,17 @@ public abstract class ZeroInjectStandaloneScope : IServiceScope, IServiceProvide
             return _root;
         }
 
+        if (serviceType == typeof(IServiceProviderIsService))
+        {
+            return _root;
+        }
+
         return ResolveScopedKnown(serviceType);
     }
 
     protected abstract object? ResolveScopedKnown(Type serviceType);
+
+    public bool IsService(Type serviceType) => ((IServiceProviderIsService)_root).IsService(serviceType);
 
     protected T TrackDisposable<T>(T instance)
         where T : notnull

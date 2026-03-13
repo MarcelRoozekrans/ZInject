@@ -12,6 +12,8 @@ public class StandaloneProviderBaseTests
             return null;
         }
 
+        protected override bool IsKnownService(Type serviceType) => false;
+
         protected override ZeroInject.Container.ZeroInjectStandaloneScope CreateScopeCore()
         {
             return new TestScope(this);
@@ -85,6 +87,15 @@ public class StandaloneProviderBaseTests
         var provider = new TestProvider();
         await provider.DisposeAsync();
         await provider.DisposeAsync(); // Should not throw
+    }
+
+    [Fact]
+    public void GetService_IServiceProviderIsService_ReturnsSelf()
+    {
+        var provider = new TestProvider();
+        var result = provider.GetService(typeof(Microsoft.Extensions.DependencyInjection.IServiceProviderIsService));
+        Assert.NotNull(result);
+        Assert.Same(provider, result);
     }
 
     // Open generic resolution is now fully code-generated (inline delegate factories).

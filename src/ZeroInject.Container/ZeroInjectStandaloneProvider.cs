@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZeroInject.Container;
 
-public abstract class ZeroInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IDisposable, IAsyncDisposable
+public abstract class ZeroInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IDisposable, IAsyncDisposable
 {
     private int _disposed;
 
@@ -18,10 +18,25 @@ public abstract class ZeroInjectStandaloneProvider : IServiceProvider, IServiceS
             return this;
         }
 
+        if (serviceType == typeof(IServiceProviderIsService))
+        {
+            return this;
+        }
+
         return ResolveKnown(serviceType);
     }
 
     protected abstract object? ResolveKnown(Type serviceType);
+
+    protected abstract bool IsKnownService(Type serviceType);
+
+    public bool IsService(Type serviceType)
+    {
+        if (serviceType == typeof(IServiceProvider) || serviceType == typeof(IServiceScopeFactory)
+            || serviceType == typeof(IServiceProviderIsService))
+            return true;
+        return IsKnownService(serviceType);
+    }
 
     public IServiceScope CreateScope()
     {

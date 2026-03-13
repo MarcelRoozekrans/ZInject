@@ -86,6 +86,8 @@ public class ScopeTests
             return null;
         }
 
+        protected override bool IsKnownService(Type serviceType) => false;
+
         protected override ZeroInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
