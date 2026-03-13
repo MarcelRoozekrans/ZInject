@@ -8,6 +8,9 @@ public abstract class ZeroInjectStandaloneScope : IServiceScope, IServiceProvide
     private readonly object _trackLock = new object();
     private List<object>? _disposables;
     private int _disposed;
+    private System.Collections.Generic.Dictionary<Type, object>? _openGenericScoped;
+
+    protected virtual System.Collections.Generic.IReadOnlyDictionary<Type, OpenGenericEntry>? OpenGenericMap => null;
 
     protected ZeroInjectStandaloneScope(ZeroInjectStandaloneProvider root)
     {
@@ -48,6 +51,73 @@ public abstract class ZeroInjectStandaloneScope : IServiceScope, IServiceProvide
         }
 
         return instance;
+    }
+
+    internal object CreateInstance(Type type, object? innerArg = null)
+    {
+        var ctor = type.GetConstructors()[0];
+        var parameters = ctor.GetParameters();
+        var args = new object?[parameters.Length];
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (innerArg != null && parameters[i].ParameterType.IsAssignableFrom(innerArg.GetType()))
+                args[i] = innerArg;
+            else
+                args[i] = GetService(parameters[i].ParameterType);
+        }
+        return ctor.Invoke(args);
+    }
+
+    protected object? ResolveOpenGenericScoped(Type serviceType)
+    {
+        if (OpenGenericMap == null || !serviceType.IsGenericType) return null;
+        var openDef = serviceType.GetGenericTypeDefinition();
+        if (!OpenGenericMap.TryGetValue(openDef, out var entry)) return null;
+
+        var typeArgs = serviceType.GenericTypeArguments;
+        var closedImpl = entry.ImplType.MakeGenericType(typeArgs);
+
+        switch (entry.Lifetime)
+        {
+            case Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton:
+                return Root.ResolveOpenGenericRoot(serviceType);
+
+            case Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped:
+                lock (_trackLock)
+                {
+                    _openGenericScoped ??= new System.Collections.Generic.Dictionary<Type, object>();
+                    if (_openGenericScoped.TryGetValue(serviceType, out var existing)) return existing;
+                    var inner = CreateInstance(closedImpl);
+                    object instance;
+                    if (entry.DecoratorImplType != null)
+                    {
+                        var closedDecorator = entry.DecoratorImplType.MakeGenericType(typeArgs);
+                        instance = CreateInstance(closedDecorator, inner);
+                    }
+                    else
+                    {
+                        instance = inner;
+                    }
+                    _openGenericScoped[serviceType] = instance;
+                    TrackDisposable(instance);
+                    return instance;
+                }
+
+            default: // Transient
+                var transientInner = CreateInstance(closedImpl);
+                object transient;
+                if (entry.DecoratorImplType != null)
+                {
+                    var closedDecorator = entry.DecoratorImplType.MakeGenericType(typeArgs);
+                    transient = CreateInstance(closedDecorator, transientInner);
+                }
+                else
+                {
+                    transient = transientInner;
+                }
+                TrackDisposable(transient);
+                return transient;
+        }
     }
 
     public void Dispose()
