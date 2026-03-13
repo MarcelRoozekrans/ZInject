@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace ZeroInject.Tests;
 
 public class AttributeTests
@@ -64,5 +66,19 @@ public class AttributeTests
         Assert.Equal(AttributeTargets.Class, usage.ValidOn);
         Assert.False(usage.AllowMultiple);
         Assert.False(usage.Inherited);
+    }
+
+    [Fact]
+    public void DecoratorAttribute_CanBeApplied_ToClass()
+    {
+        var attr = typeof(LoggingService).GetCustomAttribute<DecoratorAttribute>();
+        Assert.NotNull(attr);
+    }
+
+    [Decorator]
+    private class LoggingService : IDisposable
+    {
+        public LoggingService(IDisposable inner) { }
+        public void Dispose() { }
     }
 }
