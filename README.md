@@ -176,15 +176,15 @@ The generated container uses a type-switch (`if`/`else if` chain on `typeof(T)`)
 
 ## Benchmarks
 
-All benchmarks on .NET 9.0.14, BenchmarkDotNet v0.14.0, Windows 11, X64 RyuJIT AVX2.
+All benchmarks on .NET 9.0, BenchmarkDotNet v0.15.8, Windows 11, X64 RyuJIT AVX2.
 
 ### Startup / Registration
 
 | Method | Mean | Allocated |
 |---|---:|---:|
-| MS DI — `BuildServiceProvider()` | 177 ns | 528 B |
-| ZInject Container — `BuildZInjectServiceProvider()` | 9,584 ns | 9,296 B |
-| Standalone — `new MyAppStandaloneServiceProvider()` | **9 ns** | **40 B** |
+| MS DI — `BuildServiceProvider()` | 120 ns | 528 B |
+| ZInject Container — `BuildZInjectServiceProvider()` | 12,525 ns | 9,296 B |
+| Standalone — `new MyAppStandaloneServiceProvider()` | **11 ns** | **32 B** |
 
 The hybrid container has a one-time build cost (generating internal data structures). The standalone provider has virtually none.
 
@@ -192,17 +192,17 @@ The hybrid container has a one-time build cost (generating internal data structu
 
 | Scenario | MS DI | ZInject Container | Standalone |
 |---|---:|---:|---:|
-| Transient (no deps) | 21 ns | **11 ns** | 13 ns |
-| Transient (1 dep) | 44 ns | 34 ns | **34 ns** |
-| Transient (2 deps) | 43 ns | 79 ns | 83 ns |
-| Singleton | 13 ns | **8 ns** | 10 ns |
-| Decorated transient | 48 ns / 48 B | 18 ns / 48 B | **11 ns / 48 B** |
-| `IEnumerable<T>` (3 impls) | 52 ns | **51 ns** | 47 ns |
-| Create scope | 80 ns / 128 B | 123 ns / 216 B | **59 ns / 88 B** |
-| Resolve scoped (scope + resolve + dispose) | 9,855 ns / 992 B | 5,811 ns / 520 B | **6,475 ns / 808 B** |
-| Open generic (closed at runtime) | 18 ns / 24 B | *(delegates to MS DI)* | **34 ns / 24 B** |
+| Transient (no deps) | 21 ns | **12 ns** | 10 ns |
+| Transient (1 dep) | 24 ns | 24 ns | **21 ns** |
+| Transient (2 deps) | 48 ns | 61 ns | **45 ns** |
+| Singleton | 17 ns | **9 ns** | 10 ns |
+| Decorated transient | 73 ns / 48 B | **26 ns / 48 B** | 28 ns / 48 B |
+| `IEnumerable<T>` (3 impls) | 116 ns | 123 ns | **121 ns** |
+| Create scope | 64 ns / 128 B | 137 ns / 216 B | **56 ns / 88 B** |
+| Resolve scoped (scope + resolve + dispose) | 11,452 ns / 304 B | 8,647 ns / 120 B | **5,513 ns / 120 B** |
+| Open generic (closed at runtime) | 24 ns / 24 B | *(delegates to MS DI)* | 36 ns / 24 B |
 
-The standalone provider's `CreateScope` is ~2× faster and uses ~60% less memory than the hybrid mode because it doesn't allocate a fallback scope wrapper. Decorated transients resolve **~2× faster** than MS DI across all modes. Open-generic resolution in standalone uses code-generated delegate factories with `MakeGenericType` (~1.9× vs MS DI); the delegate is compiled and cached on the first call per closed type, so subsequent resolutions are near-zero overhead.
+The standalone provider's `CreateScope` is ~2.5× faster and uses ~60% less memory than the hybrid mode because it doesn't allocate a fallback scope wrapper. Decorated transients resolve **~2.8× faster** than MS DI across both generated modes. Scoped resolution (full lifecycle) is **~2× faster** with standalone, using only 120 B vs MS DI's 304 B. Open-generic resolution in standalone uses code-generated delegate factories with `MakeGenericType`; the delegate is compiled and cached on the first call per closed type.
 
 ## How It Compares to Scrutor
 
