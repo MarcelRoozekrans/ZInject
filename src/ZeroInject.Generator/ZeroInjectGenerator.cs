@@ -217,15 +217,15 @@ namespace ZeroInject.Generator
                     methodNameOverride = methodNameOverrides[0];
                 }
 
-                var source = GenerateExtensionClass(allServices, asmName, methodNameOverride);
+                var source = GenerateExtensionClass(allServices, asmName, methodNameOverride, decoratorsByInterface);
                 spc.AddSource("ZeroInject.ServiceCollectionExtensions.g.cs", source);
 
                 if (containerReferenced)
                 {
-                    var providerSource = GenerateServiceProviderClass(allServices, asmName);
+                    var providerSource = GenerateServiceProviderClass(allServices, asmName, decoratorsByInterface);
                     spc.AddSource("ZeroInject.ServiceProvider.g.cs", providerSource);
 
-                    var standaloneCode = GenerateStandaloneServiceProviderClass(allServices, asmName);
+                    var standaloneCode = GenerateStandaloneServiceProviderClass(allServices, asmName, decoratorsByInterface);
                     spc.AddSource(asmName + ".StandaloneServiceProvider.g.cs", standaloneCode);
                 }
             });
@@ -477,7 +477,8 @@ namespace ZeroInject.Generator
         private static string GenerateExtensionClass(
             List<ServiceRegistrationInfo> services,
             string assemblyName,
-            string? methodNameOverride)
+            string? methodNameOverride,
+            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
         {
             string methodName;
             if (methodNameOverride != null)
@@ -525,7 +526,7 @@ namespace ZeroInject.Generator
 
             foreach (var svc in services)
             {
-                EmitRegistration(sb, svc);
+                EmitRegistration(sb, svc, decoratorsByInterface);
             }
 
             sb.AppendLine("            return services;");
@@ -580,7 +581,10 @@ namespace ZeroInject.Generator
             return factorySb.ToString();
         }
 
-        private static void EmitRegistration(StringBuilder sb, ServiceRegistrationInfo svc)
+        private static void EmitRegistration(
+            StringBuilder sb,
+            ServiceRegistrationInfo svc,
+            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
         {
             var lifetime = svc.Lifetime;
             var fqn = svc.FullyQualifiedName;
@@ -593,14 +597,54 @@ namespace ZeroInject.Generator
                 return;
             }
 
-            // Register all non-filtered interfaces
+            // Register all non-filtered interfaces, wrapping with decorator when applicable
             foreach (var iface in svc.Interfaces)
             {
-                EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+                if (!svc.IsOpenGeneric && decoratorsByInterface.TryGetValue(iface, out var decorator))
+                {
+                    // Emit factory wrapping: sp => new Decorator(sp.GetRequiredService<Impl>(), ...)
+                    var decoratorFactory = BuildDecoratorFactoryLambda(decorator, fqn);
+                    sb.AppendLine(string.Format(
+                        "            services.Add{0}<{1}>({2});",
+                        lifetime, iface, decoratorFactory));
+                }
+                else
+                {
+                    EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+                }
             }
 
-            // Always register concrete type
+            // Always register concrete type (inner needs to be resolvable by itself)
             EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+        }
+
+        private static string BuildDecoratorFactoryLambda(
+            DecoratorRegistrationInfo decorator,
+            string innerConcreteFqn)
+        {
+            // sp => new LoggingFoo(sp.GetRequiredService<FooImpl>(), sp.GetRequiredService<ILogger>())
+            var sb = new StringBuilder();
+            sb.Append("sp => new ");
+            sb.Append(decorator.DecoratorFqn);
+            sb.Append("(");
+            bool first = true;
+            foreach (var param in decorator.ConstructorParameters)
+            {
+                if (!first) sb.Append(", ");
+                first = false;
+                if (param.FullyQualifiedTypeName == decorator.DecoratedInterfaceFqn)
+                {
+                    // Inner service param: resolve by concrete type
+                    sb.Append("sp.GetRequiredService<").Append(innerConcreteFqn).Append(">()");
+                }
+                else
+                {
+                    var method = param.IsOptional ? "GetService" : "GetRequiredService";
+                    sb.Append("sp.").Append(method).Append("<").Append(param.FullyQualifiedTypeName).Append(">()");
+                }
+            }
+            sb.Append(")");
+            return sb.ToString();
         }
 
         private static void EmitSingleRegistration(
@@ -642,9 +686,50 @@ namespace ZeroInject.Generator
             }
         }
 
+        private static string BuildDecoratedNewExpression(
+            ServiceRegistrationInfo svc,
+            string serviceTypeFqn,
+            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface,
+            bool forScope)
+        {
+            var baseExpr = forScope ? BuildNewExpressionForScope(svc) : BuildNewExpression(svc);
+            if (decoratorsByInterface.TryGetValue(serviceTypeFqn, out var decorator))
+            {
+                return BuildNewExpressionWithDecorator(decorator, svc.FullyQualifiedName, baseExpr, decorator.DecoratedInterfaceFqn!);
+            }
+            return baseExpr;
+        }
+
+        private static string BuildNewExpressionWithDecorator(
+            DecoratorRegistrationInfo decorator,
+            string innerConcreteFqn,
+            string innerNewExpr,
+            string decoratedInterfaceFqn)
+        {
+            var sb = new StringBuilder();
+            sb.Append("new ").Append(decorator.DecoratorFqn).Append("(");
+            bool first = true;
+            foreach (var param in decorator.ConstructorParameters)
+            {
+                if (!first) sb.Append(", ");
+                first = false;
+                if (param.FullyQualifiedTypeName == decoratedInterfaceFqn)
+                {
+                    sb.Append("(").Append(decoratedInterfaceFqn).Append(")(").Append(innerNewExpr).Append(")");
+                }
+                else
+                {
+                    sb.Append("(").Append(param.FullyQualifiedTypeName).Append(")GetService(typeof(").Append(param.FullyQualifiedTypeName).Append("))!");
+                }
+            }
+            sb.Append(")");
+            return sb.ToString();
+        }
+
         private static string GenerateServiceProviderClass(
             List<ServiceRegistrationInfo> services,
-            string assemblyName)
+            string assemblyName,
+            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
         {
             // Clean assembly name for class naming
             var cleanName = new StringBuilder();
@@ -782,7 +867,6 @@ namespace ZeroInject.Generator
             // Transients
             foreach (var svc in transients)
             {
-                var newExpr = BuildNewExpression(svc);
                 var serviceTypes = GetServiceTypes(svc);
                 foreach (var serviceType in serviceTypes)
                 {
@@ -790,6 +874,7 @@ namespace ZeroInject.Generator
                     if (lastRegistrationPerType.TryGetValue(serviceType, out lastEntry)
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
+                        var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, false);
                         sb.AppendLine("            if (serviceType == typeof(" + serviceType + "))");
                         sb.AppendLine("                return " + newExpr + ";");
                     }
@@ -983,11 +1068,6 @@ namespace ZeroInject.Generator
             // Transients in scope - fresh instance each call
             foreach (var svc in transients)
             {
-                var newExpr = BuildNewExpressionForScope(svc);
-                if (svc.ImplementsDisposable)
-                {
-                    newExpr = "TrackDisposable(" + newExpr + ")";
-                }
                 var serviceTypes = GetServiceTypes(svc);
                 foreach (var serviceType in serviceTypes)
                 {
@@ -995,6 +1075,11 @@ namespace ZeroInject.Generator
                     if (lastRegistrationPerType.TryGetValue(serviceType, out lastEntry)
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
+                        var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, true);
+                        if (svc.ImplementsDisposable)
+                        {
+                            newExpr = "TrackDisposable(" + newExpr + ")";
+                        }
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
                         sb.AppendLine("                    return " + newExpr + ";");
                     }
@@ -1218,7 +1303,8 @@ namespace ZeroInject.Generator
 
         private static string GenerateStandaloneServiceProviderClass(
             List<ServiceRegistrationInfo> services,
-            string assemblyName)
+            string assemblyName,
+            System.Collections.Generic.Dictionary<string, DecoratorRegistrationInfo> decoratorsByInterface)
         {
             // Clean assembly name for class naming
             var cleanName = new StringBuilder();
@@ -1231,15 +1317,20 @@ namespace ZeroInject.Generator
             }
             var className = cleanName.ToString() + "StandaloneServiceProvider";
 
-            // Separate services by lifetime (skip open generics - can't be resolved statically)
+            // Separate services by lifetime; collect open generics for OpenGenericMap
             var transients = new List<ServiceRegistrationInfo>();
             var singletons = new List<ServiceRegistrationInfo>();
             var scopeds = new List<ServiceRegistrationInfo>();
             var keyedServices = new List<ServiceRegistrationInfo>();
+            var openGenerics = new List<ServiceRegistrationInfo>();
 
             foreach (var svc in services)
             {
-                if (svc.IsOpenGeneric) continue;
+                if (svc.IsOpenGeneric)
+                {
+                    openGenerics.Add(svc);
+                    continue;
+                }
                 if (svc.Key != null)
                 {
                     keyedServices.Add(svc);
@@ -1341,6 +1432,48 @@ namespace ZeroInject.Generator
             sb.AppendLine("        public " + className + "() { }");
             sb.AppendLine();
 
+            // OpenGenericMap override
+            if (openGenerics.Count > 0)
+            {
+                sb.AppendLine("        private static readonly System.Collections.Generic.Dictionary<global::System.Type, global::ZeroInject.Container.OpenGenericEntry> _s_openGenericMap");
+                sb.AppendLine("            = new System.Collections.Generic.Dictionary<global::System.Type, global::ZeroInject.Container.OpenGenericEntry>");
+                sb.AppendLine("        {");
+                foreach (var svc in openGenerics)
+                {
+                    if (svc.Key != null) continue; // keyed open generics not supported in standalone
+                    var ifaces = svc.AsType != null
+                        ? new List<string> { svc.AsType }
+                        : svc.Interfaces;
+                    var lifetime = "global::Microsoft.Extensions.DependencyInjection.ServiceLifetime." + svc.Lifetime;
+                    int arity = int.Parse(svc.OpenGenericArity!);
+                    foreach (var iface in ifaces)
+                    {
+                        string? decoratorType = null;
+                        if (decoratorsByInterface.TryGetValue(iface, out var dec) && dec.IsOpenGeneric)
+                            decoratorType = dec.DecoratorFqn;
+                        var openIface = ToUnboundGenericString(iface, arity);
+                        var openImpl = ToUnboundGenericString(svc.FullyQualifiedName, arity);
+                        if (decoratorType != null)
+                        {
+                            var openDecorator = ToUnboundGenericString(decoratorType, arity);
+                            sb.AppendLine(string.Format(
+                                "            {{ typeof({0}), new global::ZeroInject.Container.OpenGenericEntry(typeof({1}), {2}, typeof({3})) }},",
+                                openIface, openImpl, lifetime, openDecorator));
+                        }
+                        else
+                        {
+                            sb.AppendLine(string.Format(
+                                "            {{ typeof({0}), new global::ZeroInject.Container.OpenGenericEntry(typeof({1}), {2}) }},",
+                                openIface, openImpl, lifetime));
+                        }
+                    }
+                }
+                sb.AppendLine("        };");
+                sb.AppendLine();
+                sb.AppendLine("        protected override System.Collections.Generic.IReadOnlyDictionary<global::System.Type, global::ZeroInject.Container.OpenGenericEntry>? OpenGenericMap => _s_openGenericMap;");
+                sb.AppendLine();
+            }
+
             // ResolveKnown - root provider: transients + singletons (scoped returns null)
             sb.AppendLine("        protected override object? ResolveKnown(Type serviceType)");
             sb.AppendLine("        {");
@@ -1354,7 +1487,6 @@ namespace ZeroInject.Generator
             // Transients
             foreach (var svc in transients)
             {
-                var newExpr = BuildNewExpression(svc);
                 var serviceTypes = GetServiceTypes(svc);
                 foreach (var serviceType in serviceTypes)
                 {
@@ -1362,6 +1494,7 @@ namespace ZeroInject.Generator
                     if (lastRegistrationPerType.TryGetValue(serviceType, out lastEntry)
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
+                        var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, false);
                         sb.AppendLine("            if (serviceType == typeof(" + serviceType + "))");
                         sb.AppendLine("                return " + newExpr + ";");
                     }
@@ -1441,7 +1574,9 @@ namespace ZeroInject.Generator
                 sb.AppendLine("            }");
             }
 
-            sb.AppendLine("            return null;");
+            sb.AppendLine(openGenerics.Count > 0
+                ? "            return ResolveOpenGenericRoot(serviceType);"
+                : "            return null;");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -1614,11 +1749,6 @@ namespace ZeroInject.Generator
             // Transients in scope - fresh instance each call
             foreach (var svc in transients)
             {
-                var newExpr = BuildNewExpressionForScope(svc);
-                if (svc.ImplementsDisposable)
-                {
-                    newExpr = "TrackDisposable(" + newExpr + ")";
-                }
                 var serviceTypes = GetServiceTypes(svc);
                 foreach (var serviceType in serviceTypes)
                 {
@@ -1626,6 +1756,11 @@ namespace ZeroInject.Generator
                     if (lastRegistrationPerType.TryGetValue(serviceType, out lastEntry)
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
+                        var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, true);
+                        if (svc.ImplementsDisposable)
+                        {
+                            newExpr = "TrackDisposable(" + newExpr + ")";
+                        }
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
                         sb.AppendLine("                    return " + newExpr + ";");
                     }
@@ -1732,8 +1867,17 @@ namespace ZeroInject.Generator
                 sb.AppendLine("                }");
             }
 
-            sb.AppendLine("                return null;");
+            sb.AppendLine(openGenerics.Count > 0
+                ? "                return ResolveOpenGenericScoped(serviceType);"
+                : "                return null;");
             sb.AppendLine("            }");
+
+            // OpenGenericMap override in scope — reuses the static map from the outer class
+            if (openGenerics.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("            protected override System.Collections.Generic.IReadOnlyDictionary<global::System.Type, global::ZeroInject.Container.OpenGenericEntry>? OpenGenericMap => " + className + "._s_openGenericMap;");
+            }
 
             // Keyed service methods in scope
             if (hasKeyedServices)
@@ -1934,11 +2078,21 @@ namespace ZeroInject.Generator
             var fqn = typeSymbol.ToDisplayString(FullyQualifiedFormat);
             bool isAbstractOrStatic = typeSymbol.IsAbstract || typeSymbol.IsStatic;
             bool isOpenGeneric = typeSymbol.IsGenericType;
+            int arity = typeSymbol.TypeParameters.Length;
 
-            // Collect all interfaces this type implements
+            // For open generic decorators, convert to unbound generic form
+            if (isOpenGeneric)
+                fqn = ToUnboundGenericString(fqn, arity);
+
+            // Collect all interfaces this type implements (unbound for open generics)
             var interfaces = new System.Collections.Generic.HashSet<string>();
             foreach (var iface in typeSymbol.AllInterfaces)
-                interfaces.Add(iface.ToDisplayString(FullyQualifiedFormat));
+            {
+                var ifaceFqn = iface.ToDisplayString(FullyQualifiedFormat);
+                if (isOpenGeneric && iface.IsGenericType)
+                    ifaceFqn = ToUnboundGenericString(ifaceFqn, arity);
+                interfaces.Add(ifaceFqn);
+            }
 
             // Find public constructor
             IMethodSymbol? ctor = null;
@@ -1956,9 +2110,13 @@ namespace ZeroInject.Generator
                 foreach (var param in ctor.Parameters)
                 {
                     var paramTypeFqn = param.Type.ToDisplayString(FullyQualifiedFormat);
-                    ctorParams.Add(new ConstructorParameterInfo(paramTypeFqn, param.Name, param.HasExplicitDefaultValue));
-                    if (decoratedInterface == null && interfaces.Contains(paramTypeFqn))
-                        decoratedInterface = paramTypeFqn;
+                    // For open generic decorators, convert param types to unbound form for matching
+                    var matchFqn = (isOpenGeneric && param.Type is INamedTypeSymbol pt && pt.IsGenericType)
+                        ? ToUnboundGenericString(paramTypeFqn, arity)
+                        : paramTypeFqn;
+                    ctorParams.Add(new ConstructorParameterInfo(matchFqn, param.Name, param.HasExplicitDefaultValue));
+                    if (decoratedInterface == null && interfaces.Contains(matchFqn))
+                        decoratedInterface = matchFqn;
                 }
             }
 

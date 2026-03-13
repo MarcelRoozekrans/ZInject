@@ -1024,4 +1024,111 @@ public class ContainerGeneratorTests
         Assert.Contains("new global::TestApp.HandlerA()", output);
         Assert.Contains("new global::TestApp.HandlerB()", output);
     }
+
+    // --- Task 5: Hybrid container — decorator wrapping ---
+
+    [Fact]
+    public void HybridContainer_Decorator_NonGeneric_WrapsInTypeSwitch()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [Decorator]
+            public class LoggingFoo : IFoo
+            {
+                public LoggingFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // The IFoo case in ResolveKnown should wrap FooImpl in LoggingFoo
+        Assert.Contains("new global::LoggingFoo", output);
+        Assert.Contains("new global::FooImpl", output);
+        // They should appear together (decorator wrapping inner) in the IFoo branch
+        // Search within container section (typeof only appears in containers, not extension class)
+        var fooIdx = output.IndexOf("typeof(global::IFoo)");
+        var loggingIdx = output.IndexOf("new global::LoggingFoo", fooIdx);
+        var fooImplIdx = output.IndexOf("new global::FooImpl", fooIdx);
+        Assert.True(fooIdx >= 0 && loggingIdx > fooIdx && fooImplIdx > fooIdx);
+    }
+
+    // --- Task 6: Standalone container — open generics map + decorator ---
+
+    [Fact]
+    public void Standalone_OpenGeneric_EmitsOpenGenericMap()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IRepo<T> { }
+            [Scoped]
+            public class Repo<T> : IRepo<T> { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("OpenGenericMap", output);
+        Assert.Contains("typeof(global::IRepo<>)", output);
+        Assert.Contains("typeof(global::Repo<>)", output);
+        Assert.Contains("ServiceLifetime.Scoped", output);
+    }
+
+    [Fact]
+    public void Standalone_OpenGeneric_ResolveKnown_CallsResolveOpenGenericRoot()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IRepo<T> { }
+            [Scoped]
+            public class Repo<T> : IRepo<T> { }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("ResolveOpenGenericRoot(serviceType)", output);
+        Assert.Contains("ResolveOpenGenericScoped(serviceType)", output);
+    }
+
+    [Fact]
+    public void Standalone_Decorator_NonGeneric_WrapsInTypeSwitch()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [Decorator]
+            public class LoggingFoo : IFoo
+            {
+                public LoggingFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        // Standalone type-switch for IFoo wraps FooImpl in LoggingFoo
+        var standaloneIdx = output.IndexOf("StandaloneServiceProvider");
+        var fooIdx = output.IndexOf("typeof(global::IFoo)", standaloneIdx);
+        var loggingIdx = output.IndexOf("new global::LoggingFoo", fooIdx);
+        Assert.True(loggingIdx > fooIdx, "Standalone should emit LoggingFoo wrapping FooImpl");
+    }
+
+    [Fact]
+    public void Standalone_OpenGeneric_WithDecorator_EmitsDecoratorImplType()
+    {
+        var source = """
+            using ZeroInject;
+            public interface IRepo<T> { }
+            [Scoped]
+            public class Repo<T> : IRepo<T> { }
+            [Decorator]
+            public class LoggingRepo<T> : IRepo<T>
+            {
+                public LoggingRepo(IRepo<T> inner) { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("typeof(global::LoggingRepo<>)", output);
+        // DecoratorImplType set in OpenGenericEntry
+        Assert.Contains("new global::ZeroInject.Container.OpenGenericEntry(typeof(global::Repo<>)", output);
+    }
 }
