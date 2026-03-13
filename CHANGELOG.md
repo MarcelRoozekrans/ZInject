@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2](https://github.com/MarcelRoozekrans/ZInject/compare/v0.10.1...v0.10.2) (2026-03-13)
+
+
+### Bug Fixes
+
+* update GitVersion.yml to v6 format ([4f62800](https://github.com/MarcelRoozekrans/ZInject/commit/4f628004d32aae7e8b9b047004fc2ed0c3111e19))
+* update GitVersion.yml to v6 format ([e1471cb](https://github.com/MarcelRoozekrans/ZInject/commit/e1471cb12e5b34c00cc7688dba60350b9ba08557))
+
 ## [0.10.1](https://github.com/MarcelRoozekrans/ZInject/compare/v0.10.0...v0.10.1) (2026-03-13)
 
 
