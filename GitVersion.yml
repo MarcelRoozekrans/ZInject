@@ -1,0 +1,18 @@
+mode: ContinuousDeployment
+next-version: 0.9.0
+branches:
+  main:
+    regex: ^main$
+    mode: ContinuousDelivery
+    tag: ''
+    increment: Patch
+  feature:
+    regex: ^feature/
+    mode: ContinuousDeployment
+    tag: alpha
+    increment: Minor
+  pull-request:
+    regex: ^(pull|pull\-requests|pr)[/-]
+    mode: ContinuousDeployment
+    tag: pr
+    increment: Inherit
