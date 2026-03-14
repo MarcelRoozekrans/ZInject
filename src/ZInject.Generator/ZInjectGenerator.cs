@@ -453,15 +453,16 @@ namespace ZInject.Generator
                 foreach (var param in chosenCtor.Parameters)
                 {
                     var paramTypeFqn = param.Type.ToDisplayString(FullyQualifiedFormat);
-                    bool isOptional = param.HasExplicitDefaultValue
-                        || param.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "ZInject.OptionalDependencyAttribute");
+                    var paramAttrs = param.GetAttributes();
+                    bool hasOptionalAttr = !param.HasExplicitDefaultValue
+                        && paramAttrs.Any(a => a.AttributeClass?.ToDisplayString() == "ZInject.OptionalDependencyAttribute");
+                    bool isOptional = param.HasExplicitDefaultValue || hasOptionalAttr;
 
                     // Check if [OptionalDependency] is used on a non-nullable reference type
-                    if (optionalNonNullableParamName == null
-                        && !param.HasExplicitDefaultValue
-                        && param.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "ZInject.OptionalDependencyAttribute")
-                        && param.Type.NullableAnnotation != Microsoft.CodeAnalysis.NullableAnnotation.Annotated
-                        && !param.Type.IsValueType)
+                    // Only fire in nullable-enabled contexts (NotAnnotated), not when nullable is disabled (None)
+                    if (hasOptionalAttr
+                        && param.Type.NullableAnnotation == Microsoft.CodeAnalysis.NullableAnnotation.NotAnnotated
+                        && optionalNonNullableParamName == null)
                     {
                         optionalNonNullableParamName = param.Name;
                         optionalNonNullableParamType = paramTypeFqn;

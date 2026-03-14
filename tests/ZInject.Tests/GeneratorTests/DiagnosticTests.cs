@@ -291,7 +291,7 @@ public class DiagnosticTests
             """;
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
         Assert.Contains("GetService<global::ILogger>", output);
         Assert.DoesNotContain("GetRequiredService<global::ILogger>", output);
     }
@@ -300,6 +300,7 @@ public class DiagnosticTests
     public void OptionalDependency_OnNonNullableParameter_ReportsZI015()
     {
         var source = """
+            #nullable enable
             using ZInject;
             public interface ILogger { }
             public interface IFoo { }
@@ -311,6 +312,6 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, d => d.Id == "ZI015");
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI015", StringComparison.Ordinal));
     }
 }
