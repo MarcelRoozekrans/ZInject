@@ -314,4 +314,25 @@ public class DiagnosticTests
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
         Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI015", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void DecoratorOf_InterfaceNotImplemented_ReportsZI016()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public interface IBar { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IBar))]
+            public class BadDecorator : IFoo
+            {
+                public BadDecorator(IFoo inner) { }
+            }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI016", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI011", StringComparison.Ordinal));
+    }
 }

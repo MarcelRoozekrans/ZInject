@@ -212,9 +212,18 @@ namespace ZInject.Generator
                     }
                     if (dec.DecoratedInterfaceFqn == null)
                     {
-                        spc.ReportDiagnostic(Diagnostic.Create(
-                            DiagnosticDescriptors.DecoratorNoMatchingInterface,
-                            Location.None, dec.TypeName));
+                        if (dec.IsDecoratorOf)
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.DecoratorOfInterfaceNotImplemented,
+                                Location.None, dec.TypeName, dec.DecoratorFqn));
+                        }
+                        else
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.DecoratorNoMatchingInterface,
+                                Location.None, dec.TypeName));
+                        }
                         continue;
                     }
                     if (!registeredInterfaces.Contains(dec.DecoratedInterfaceFqn))
