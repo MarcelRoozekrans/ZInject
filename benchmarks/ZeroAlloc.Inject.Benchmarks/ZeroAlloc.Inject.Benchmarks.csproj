@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <RootNamespace>ZInject.Benchmarks</RootNamespace>
+    <RootNamespace>ZeroAlloc.Inject.Benchmarks</RootNamespace>
     <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);MA0048</NoWarn>
   </PropertyGroup>
@@ -19,9 +19,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ZInject\ZInject.csproj" />
-    <ProjectReference Include="..\..\src\ZInject.Container\ZInject.Container.csproj" />
-    <ProjectReference Include="..\..\src\ZInject.Generator\ZInject.Generator.csproj"
+    <ProjectReference Include="..\..\src\ZeroAlloc.Inject\ZeroAlloc.Inject.csproj" />
+    <ProjectReference Include="..\..\src\ZeroAlloc.Inject.Container\ZeroAlloc.Inject.Container.csproj" />
+    <ProjectReference Include="..\..\src\ZeroAlloc.Inject.Generator\ZeroAlloc.Inject.Generator.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
