@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.5](https://github.com/MarcelRoozekrans/ZInject/compare/v0.10.4...v0.10.5) (2026-03-14)
+
+
+### Bug Fixes
+
+* resolve Container analyzer DLL path reliably ([ee52f28](https://github.com/MarcelRoozekrans/ZInject/commit/ee52f280d9fb782985a2704e1e1a49fdef9c61ee))
+* use MSBuildThisFileDirectory for generator DLL path in Container package ([b5d3563](https://github.com/MarcelRoozekrans/ZInject/commit/b5d3563a4ad81dccee746538c11ae27b0a839bf1))
+
 ## [0.10.4](https://github.com/MarcelRoozekrans/ZInject/compare/v0.10.3...v0.10.4) (2026-03-14)
 
 
