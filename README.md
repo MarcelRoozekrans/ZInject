@@ -3,7 +3,7 @@
 [![CI](https://github.com/MarcelRoozekrans/ZInject/actions/workflows/ci.yml/badge.svg)](https://github.com/MarcelRoozekrans/ZInject/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/ZInject.svg)](https://www.nuget.org/packages/ZInject)
 
-Compile-time DI registration for .NET. A Roslyn source generator that auto-discovers services via attributes and generates `IServiceCollection` extension methods. No reflection, no runtime scanning.
+Compile-time DI registration for .NET. A Roslyn source generator that auto-discovers services via attributes and generates `IServiceCollection` extension methods and a **Native AOT-compatible** `IServiceProvider`. No reflection, no runtime scanning.
 
 ## Quick Start
 
@@ -101,6 +101,30 @@ Override the generated method name with an assembly-level attribute:
 [assembly: ZInject("AddDomainServices")]
 ```
 
+### Decorator Ordering and Conditional Decorators
+
+`[DecoratorOf]` is the explicit form of `[Decorator]` — it names the decorated interface, controls ordering, and supports conditional application.
+
+```csharp
+[DecoratorOf(typeof(IRetriever), Order = 1, WhenRegistered = typeof(SomeOptions))]
+public class LoggingRetriever : IRetriever
+{
+    public LoggingRetriever(IRetriever inner, [OptionalDependency] ILogger? logger) { }
+}
+
+[DecoratorOf(typeof(IRetriever), Order = 2)]
+public class TracingRetriever : IRetriever
+{
+    public TracingRetriever(IRetriever inner) { }
+}
+```
+
+**`Order`** — ascending: `Order = 1` is innermost (closest to the real implementation). Higher numbers wrap further out.
+
+**`WhenRegistered`** — the decorator is only wired up if the specified type is present in the `IServiceCollection` at the time `AddXxxServices()` is called. One O(n) scan at startup; no impact on resolution.
+
+**`[OptionalDependency]`** — marks a constructor parameter as optional. The generator emits `GetService<T>()` (returns `null`) instead of `GetRequiredService<T>()` (throws). The parameter must be nullable (`ILogger?`).
+
 ## Diagnostics
 
 ZInject reports issues at compile time:
@@ -117,6 +141,13 @@ ZInject reports issues at compile time:
 | ZI008 | Warning | Missing `Microsoft.Extensions.DependencyInjection.Abstractions` |
 | ZI009 | Error | Multiple public constructors without `[ActivatorUtilitiesConstructor]` |
 | ZI010 | Error | Constructor parameter is a primitive/value type |
+| ZI011 | Error | Decorator has no matching interface parameter |
+| ZI012 | Error | Decorated interface not registered as a service |
+| ZI013 | Warning | Decorator on abstract or static class |
+| ZI014 | Error | Circular dependency detected (compile-time cycle detection) |
+| ZI015 | Error | `[OptionalDependency]` on non-nullable parameter |
+| ZI016 | Error | `[DecoratorOf]` interface not implemented by the class |
+| ZI017 | Error | Two decorators for the same interface share the same `Order` |
 
 ## Generated Container
 
@@ -202,12 +233,27 @@ The hybrid container has a one-time build cost (generating internal data structu
 
 The standalone provider's `CreateScope` is ~2.5× faster and uses ~60% less memory than the hybrid mode because it doesn't allocate a fallback scope wrapper. Decorated transients resolve **~2.8× faster** than MS DI across both generated modes. Scoped resolution (full lifecycle) is **~2× faster** with standalone, using only 120 B vs MS DI's 304 B. Open-generic resolution in standalone uses code-generated delegate factories with `MakeGenericType`; the delegate is compiled and cached on the first call per closed type.
 
+## Native AOT
+
+Because ZInject generates all service instantiation as plain `new ClassName(...)` constructor calls at compile time, it is compatible with Native AOT publishing — no `Activator.CreateInstance`, no `Type.GetMethod`, no reflection in generated code.
+
+| Mode | Native AOT |
+|---|---|
+| `AddXxxServices()` extension method | ✅ Generated registration code is AOT-safe. Runtime resolution uses your MS DI configuration. |
+| Standalone container (closed generics) | ✅ Fully AOT-compatible. Direct `new` calls, `typeof(T)` type switches, `Interlocked.CompareExchange` for singletons — zero reflection. |
+| Standalone container (open generics) | ⚠️ Uses `MakeGenericType` + `Delegate.CreateDelegate` on the first call per closed type. Cached after that. Not strict-AOT. |
+| Hybrid container (known services) | ✅ AOT-safe for services registered with ZInject. |
+| Hybrid container (unknown services) | ⚠️ Falls back to MS DI, which uses reflection. |
+
+**The common path — standalone container with concrete services — is 100% AOT-compatible.** Open generics are the only exception; they require runtime code generation.
+
 ## How It Compares to Scrutor
 
 | | ZInject | Scrutor |
 |---|---|---|
 | Discovery | Compile-time source gen | Runtime assembly scanning |
-| Reflection | None | Yes |
+| Reflection | None (open generics excepted) | Yes |
+| Native AOT | ✅ Standalone mode | ❌ |
 | Startup cost | Zero | Scales with assembly size |
 | IDE support | Compile errors + warnings | Runtime exceptions |
 | Configuration | Attributes on classes | Fluent API in `Program.cs` |

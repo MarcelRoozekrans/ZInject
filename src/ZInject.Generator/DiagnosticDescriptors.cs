@@ -115,5 +115,29 @@ namespace ZInject.Generator
             "ZInject",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor OptionalDependencyOnNonNullable = new DiagnosticDescriptor(
+            "ZI015",
+            "[OptionalDependency] on non-nullable parameter",
+            "Parameter '{0}' of class '{1}' is marked [OptionalDependency] but its type '{2}' is not nullable; change the parameter type to '{2}?'",
+            "ZInject",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor DecoratorOfInterfaceNotImplemented = new DiagnosticDescriptor(
+            "ZI016",
+            "[DecoratorOf] interface not implemented",
+            "Class '{0}' is marked [DecoratorOf({1})] but does not implement that interface",
+            "ZInject",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor DecoratorOfDuplicateOrder = new DiagnosticDescriptor(
+            "ZI017",
+            "Duplicate decorator Order",
+            "Interface '{0}' has two [DecoratorOf] decorators with the same Order={1}: '{2}' and '{3}'. Orders must be unique per interface.",
+            "ZInject",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

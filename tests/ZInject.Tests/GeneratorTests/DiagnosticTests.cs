@@ -275,4 +275,88 @@ public class DiagnosticTests
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
         Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void OptionalDependency_GeneratesGetService_InsteadOfGetRequiredService()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public interface ILogger { }
+            [Transient]
+            public class FooImpl : IFoo
+            {
+                public FooImpl([OptionalDependency] ILogger? logger) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("GetService<global::ILogger>", output);
+        Assert.DoesNotContain("GetRequiredService<global::ILogger>", output);
+    }
+
+    [Fact]
+    public void OptionalDependency_OnNonNullableParameter_ReportsZI015()
+    {
+        var source = """
+            #nullable enable
+            using ZInject;
+            public interface ILogger { }
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo
+            {
+                public FooImpl([OptionalDependency] ILogger logger) { }
+            }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI015", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DecoratorOf_InterfaceNotImplemented_ReportsZI016()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public interface IBar { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IBar))]
+            public class BadDecorator : IFoo
+            {
+                public BadDecorator(IFoo inner) { }
+            }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI016", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI011", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DecoratorOf_DuplicateOrder_ReportsZI017()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo), Order = 1)]
+            public class DecoratorA : IFoo
+            {
+                public DecoratorA(IFoo inner) { }
+            }
+            [DecoratorOf(typeof(IFoo), Order = 1)]
+            public class DecoratorB : IFoo
+            {
+                public DecoratorB(IFoo inner) { }
+            }
+            """;
+
+        var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI017", StringComparison.Ordinal));
+    }
 }

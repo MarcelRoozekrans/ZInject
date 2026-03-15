@@ -141,4 +141,156 @@ public class DecoratorGeneratorTests
         Assert.Contains("GetRequiredService<global::ICache>", output);
         Assert.Contains("GetRequiredService<global::ILogger>", output);
     }
+
+    [Fact]
+    public void DecoratorOf_BasicWrapping_GeneratesCorrectly()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo))]
+            public class LoggingFoo : IFoo
+            {
+                public LoggingFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("new global::LoggingFoo", output);
+        Assert.Contains("GetRequiredService<global::FooImpl>", output);
+    }
+
+    [Fact]
+    public void DecoratorOf_WhenRegistered_EmitsConditionalCheck()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public class SomeOptions { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo), WhenRegistered = typeof(SomeOptions))]
+            public class ConditionalFoo : IFoo
+            {
+                public ConditionalFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("using System.Linq;", output);
+        Assert.Contains("services.Any(d => d.ServiceType == typeof(global::SomeOptions))", output);
+        Assert.Contains("new global::ConditionalFoo", output);
+    }
+
+    [Fact]
+    public void DecoratorOf_NoWhenRegistered_DoesNotEmitConditionalCheck()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo))]
+            public class UnconditionalFoo : IFoo
+            {
+                public UnconditionalFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain("services.Any", output);
+        Assert.Contains("new global::UnconditionalFoo", output);
+    }
+
+    [Fact]
+    public void DecoratorOf_Order_InnerMostFirst()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo), Order = 2)]
+            public class OuterFoo : IFoo
+            {
+                public OuterFoo(IFoo inner) { }
+            }
+            [DecoratorOf(typeof(IFoo), Order = 1)]
+            public class InnerFoo : IFoo
+            {
+                public InnerFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        var innerIdx = output.IndexOf("new global::InnerFoo");
+        var outerIdx = output.IndexOf("new global::OuterFoo");
+        Assert.True(innerIdx >= 0 && outerIdx >= 0, "Both decorators must appear in output");
+        Assert.True(outerIdx < innerIdx, "OuterFoo (Order=2) is the outermost wrapper and must appear first in the generated expression");
+    }
+
+    [Fact]
+    public void DecoratorOf_FullChain_OrderAndWhenRegisteredAndOptional()
+    {
+        var source = """
+            using ZInject;
+            public interface IRetriever { }
+            public class SomeOptions { }
+            public interface ILogger { }
+            [Transient]
+            public class RealRetriever : IRetriever { }
+            [DecoratorOf(typeof(IRetriever), Order = 1, WhenRegistered = typeof(SomeOptions))]
+            public class LoggingRetriever : IRetriever
+            {
+                public LoggingRetriever(IRetriever inner, [OptionalDependency] ILogger? logger) { }
+            }
+            [DecoratorOf(typeof(IRetriever), Order = 2)]
+            public class TracingRetriever : IRetriever
+            {
+                public TracingRetriever(IRetriever inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        // Order=1 LoggingRetriever wraps RealRetriever, conditional on SomeOptions
+        Assert.Contains("services.Any(d => d.ServiceType == typeof(global::SomeOptions))", output);
+        Assert.Contains("new global::LoggingRetriever", output);
+        Assert.Contains("GetService<global::ILogger>", output);         // optional dep
+        // Order=2 TracingRetriever wraps unconditionally
+        Assert.Contains("new global::TracingRetriever", output);
+        // LoggingRetriever (Order=1, innermost) is registered before TracingRetriever (Order=2, outermost) wraps it
+        Assert.True(output.IndexOf("LoggingRetriever") < output.IndexOf("TracingRetriever"));
+    }
+
+    [Fact]
+    public void DecoratorOf_AllowMultiple_OneClassDecoratesTwoInterfaces_GeneratesBoth()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public interface IBar { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [Transient]
+            public class BarImpl : IBar { }
+            [DecoratorOf(typeof(IFoo))]
+            [DecoratorOf(typeof(IBar))]
+            public class MultiDecorator : IFoo, IBar
+            {
+                public MultiDecorator(IFoo foo, IBar bar) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        // MultiDecorator should appear in the IFoo chain
+        Assert.Contains("new global::MultiDecorator", output);
+    }
 }

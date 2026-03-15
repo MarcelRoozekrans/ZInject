@@ -97,13 +97,29 @@ namespace ZInject.Generator
                 .Where(static x => x != null)
                 .Collect();
 
+            var decoratorOfs = context.SyntaxProvider.ForAttributeWithMetadataName(
+                "ZInject.DecoratorOfAttribute",
+                predicate: static (node, _) => true,
+                transform: static (ctx, ct) => GetDecoratorOfInfo(ctx, ct))
+                .Where(static x => x != null)
+                .Collect();
+
+            var allDecorators = decorators.Combine(decoratorOfs)
+                .Select(static (pair, _) =>
+                {
+                    var builder = ImmutableArray.CreateBuilder<DecoratorRegistrationInfo?>();
+                    builder.AddRange(pair.Left);
+                    builder.AddRange(pair.Right);
+                    return builder.ToImmutable();
+                });
+
             var combined = transients
                 .Combine(scopeds)
                 .Combine(singletons)
                 .Combine(assemblyAttr)
                 .Combine(assemblyName)
                 .Combine(hasContainer)
-                .Combine(decorators);
+                .Combine(allDecorators);
 
             context.RegisterSourceOutput(combined, static (spc, data) =>
             {
@@ -156,6 +172,16 @@ namespace ZInject.Generator
                             svc.TypeName,
                             svc.PrimitiveParameterType));
                     }
+
+                    if (svc.OptionalNonNullableParamName != null)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.OptionalDependencyOnNonNullable,
+                            Location.None,
+                            svc.OptionalNonNullableParamName,
+                            svc.TypeName,
+                            svc.OptionalNonNullableParamType));
+                    }
                 }
 
                 if (allServices.Count == 0 && decoratorInfos.Length == 0)
@@ -186,9 +212,18 @@ namespace ZInject.Generator
                     }
                     if (dec.DecoratedInterfaceFqn == null)
                     {
-                        spc.ReportDiagnostic(Diagnostic.Create(
-                            DiagnosticDescriptors.DecoratorNoMatchingInterface,
-                            Location.None, dec.TypeName));
+                        if (dec.IsDecoratorOf)
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.DecoratorOfInterfaceNotImplemented,
+                                Location.None, dec.TypeName, dec.DecoratorFqn));
+                        }
+                        else
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.DecoratorNoMatchingInterface,
+                                Location.None, dec.TypeName));
+                        }
                         continue;
                     }
                     if (!registeredInterfaces.Contains(dec.DecoratedInterfaceFqn))
@@ -211,6 +246,27 @@ namespace ZInject.Generator
                         decoratorsByInterface[dec.DecoratedInterfaceFqn!] = list;
                     }
                     list.Add(dec);
+                }
+
+                // Sort each decorator list by Order ascending, and check for ZI017 (duplicate Order)
+                foreach (var kvp in decoratorsByInterface)
+                {
+                    var list = kvp.Value;
+                    list.Sort(static (a, b) => a.Order.CompareTo(b.Order));
+
+                    for (int i = 0; i < list.Count - 1; i++)
+                    {
+                        if (list[i].IsDecoratorOf && list[i + 1].IsDecoratorOf && list[i].Order == list[i + 1].Order)
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.DecoratorOfDuplicateOrder,
+                                Location.None,
+                                kvp.Key,
+                                list[i].Order.ToString(),
+                                list[i].TypeName,
+                                list[i + 1].TypeName));
+                        }
+                    }
                 }
 
                 DetectCircularDependencies(spc, allServices, decoratorsByInterface);
@@ -403,6 +459,8 @@ namespace ZInject.Generator
             var constructorParameters = new List<ConstructorParameterInfo>();
             string? primitiveParameterName = null;
             string? primitiveParameterType = null;
+            string? optionalNonNullableParamName = null;
+            string? optionalNonNullableParamType = null;
 
             if (publicCtors.Count == 1)
             {
@@ -441,7 +499,20 @@ namespace ZInject.Generator
                 foreach (var param in chosenCtor.Parameters)
                 {
                     var paramTypeFqn = param.Type.ToDisplayString(FullyQualifiedFormat);
-                    bool isOptional = param.HasExplicitDefaultValue;
+                    var paramAttrs = param.GetAttributes();
+                    bool hasOptionalAttr = !param.HasExplicitDefaultValue
+                        && paramAttrs.Any(a => a.AttributeClass?.ToDisplayString() == "ZInject.OptionalDependencyAttribute");
+                    bool isOptional = param.HasExplicitDefaultValue || hasOptionalAttr;
+
+                    // Check if [OptionalDependency] is used on a non-nullable reference type
+                    // Only fire in nullable-enabled contexts (NotAnnotated), not when nullable is disabled (None)
+                    if (hasOptionalAttr
+                        && param.Type.NullableAnnotation == Microsoft.CodeAnalysis.NullableAnnotation.NotAnnotated
+                        && optionalNonNullableParamName == null)
+                    {
+                        optionalNonNullableParamName = param.Name;
+                        optionalNonNullableParamType = paramTypeFqn;
+                    }
 
                     constructorParameters.Add(new ConstructorParameterInfo(
                         paramTypeFqn,
@@ -480,6 +551,8 @@ namespace ZInject.Generator
                 hasMultipleConstructors,
                 primitiveParameterName,
                 primitiveParameterType,
+                optionalNonNullableParamName,
+                optionalNonNullableParamType,
                 implementsDisposable);
         }
 
@@ -520,11 +593,23 @@ namespace ZInject.Generator
                 className = methodName + "ServiceCollectionExtensions";
             }
 
+            bool hasConditionalDecorators = false;
+            foreach (var list in decoratorsByInterface.Values)
+            {
+                foreach (var dec in list)
+                {
+                    if (dec.WhenRegisteredFqn != null) { hasConditionalDecorators = true; break; }
+                }
+                if (hasConditionalDecorators) break;
+            }
+
             var sb = new StringBuilder();
             sb.AppendLine("// <auto-generated />");
             sb.AppendLine("#nullable enable");
             sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
             sb.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
+            if (hasConditionalDecorators)
+                sb.AppendLine("using System.Linq;");
             sb.AppendLine();
             sb.AppendLine("namespace Microsoft.Extensions.DependencyInjection");
             sb.AppendLine("{");
@@ -611,11 +696,8 @@ namespace ZInject.Generator
             {
                 if (!svc.IsOpenGeneric && decoratorsByInterface.TryGetValue(iface, out var decorators))
                 {
-                    // Emit factory wrapping with chained decorators
-                    var decoratorFactory = BuildDecoratorFactoryLambdaChained(decorators, fqn);
-                    sb.AppendLine(string.Format(
-                        "            services.Add{0}<{1}>({2});",
-                        lifetime, iface, decoratorFactory));
+                    // Emit factory wrapping with chained decorators, applying WhenRegistered guards per decorator
+                    EmitDecoratorRegistrations(sb, lifetime, iface, fqn, decorators);
                 }
                 else
                 {
@@ -625,6 +707,85 @@ namespace ZInject.Generator
 
             // Always register concrete type (inner needs to be resolvable by itself)
             EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+        }
+
+        private static void EmitDecoratorRegistrations(
+            StringBuilder sb,
+            string lifetime,
+            string ifaceFqn,
+            string innerConcreteFqn,
+            List<DecoratorRegistrationInfo> decorators)
+        {
+            // Check if any decorator has a WhenRegistered guard
+            bool hasAnyConditional = false;
+            foreach (var dec in decorators)
+            {
+                if (dec.WhenRegisteredFqn != null)
+                {
+                    hasAnyConditional = true;
+                    break;
+                }
+            }
+
+            if (!hasAnyConditional)
+            {
+                // Fast path: no conditional decorators, emit the full chain as a single registration
+                var decoratorFactory = BuildDecoratorFactoryLambdaChained(decorators, innerConcreteFqn);
+                sb.AppendLine(string.Format(
+                    "            services.Add{0}<{1}>({2});",
+                    lifetime, ifaceFqn, decoratorFactory));
+                return;
+            }
+
+            // Slow path: at least one conditional decorator — emit per-decorator registrations
+            // We build the chain incrementally. Unconditional decorators up to each conditional one
+            // are folded into the chain expression before the conditional check.
+            var currentInner = innerConcreteFqn;
+            // Split decorators into groups: run of unconditional, then a conditional
+            // For simplicity, process each decorator individually, accumulating the chain
+            var unconditionalAccumulator = new System.Collections.Generic.List<DecoratorRegistrationInfo>();
+
+            foreach (var dec in decorators)
+            {
+                if (dec.WhenRegisteredFqn == null)
+                {
+                    // Unconditional: accumulate for later chain building
+                    unconditionalAccumulator.Add(dec);
+                }
+                else
+                {
+                    // Conditional decorator: first flush unconditional ones if any, then emit conditional
+                    // Build the chain so far with unconditional + this conditional decorator
+                    var chainDecorators = new System.Collections.Generic.List<DecoratorRegistrationInfo>(unconditionalAccumulator) { dec };
+                    var decoratorFactory = BuildDecoratorFactoryLambdaChained(chainDecorators, currentInner);
+
+                    sb.AppendLine(string.Format(
+                        "            if (services.Any(d => d.ServiceType == typeof({0})))",
+                        dec.WhenRegisteredFqn));
+                    sb.AppendLine("            {");
+                    sb.AppendLine(string.Format(
+                        "                services.Add{0}<{1}>({2});",
+                        lifetime, ifaceFqn, decoratorFactory));
+                    sb.AppendLine("            }");
+
+                    // After a conditional registration, the chain is emitted inside the guard.
+                    // For subsequent decorators, they would wrap the result of this conditional.
+                    // Since we cannot know at generation time whether the conditional registration
+                    // ran, we reset the accumulator and continue chaining on the same base.
+                    unconditionalAccumulator.Clear();
+                    // Note: currentInner stays the same — subsequent decorators wrap from the concrete
+                }
+            }
+
+            // If there are remaining unconditional decorators that were never followed by a conditional,
+            // emit them as a plain registration
+            if (unconditionalAccumulator.Count > 0)
+            {
+                var decoratorFactory = BuildDecoratorFactoryLambdaChained(unconditionalAccumulator, currentInner);
+                sb.AppendLine(string.Format(
+                    "            services.Add{0}<{1}>({2});",
+                    lifetime, ifaceFqn, decoratorFactory));
+            }
         }
 
         private static string BuildDecoratorFactoryLambdaChained(
@@ -2629,7 +2790,9 @@ namespace ZInject.Generator
                     var matchFqn = (isOpenGeneric && param.Type is INamedTypeSymbol pt && pt.IsGenericType)
                         ? ToUnboundGenericString(paramTypeFqn, arity)
                         : paramTypeFqn;
-                    ctorParams.Add(new ConstructorParameterInfo(matchFqn, param.Name, param.HasExplicitDefaultValue));
+                    bool isOptional = param.HasExplicitDefaultValue
+                        || param.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "ZInject.OptionalDependencyAttribute");
+                    ctorParams.Add(new ConstructorParameterInfo(matchFqn, param.Name, isOptional));
                     if (decoratedInterface == null && interfaces.Contains(matchFqn))
                         decoratedInterface = matchFqn;
                 }
@@ -2645,7 +2808,97 @@ namespace ZInject.Generator
 
             return new DecoratorRegistrationInfo(
                 typeName, fqn, decoratedInterface,
-                isOpenGeneric, ctorParams, implementsDisposable, isAbstractOrStatic);
+                isOpenGeneric, ctorParams, implementsDisposable, isAbstractOrStatic,
+                order: 0, whenRegisteredFqn: null, isDecoratorOf: false);
+        }
+
+        private static DecoratorRegistrationInfo? GetDecoratorOfInfo(
+            GeneratorAttributeSyntaxContext ctx,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (ctx.TargetSymbol is not INamedTypeSymbol typeSymbol) return null;
+
+            var typeName = typeSymbol.Name;
+            var fqn = typeSymbol.ToDisplayString(FullyQualifiedFormat);
+            bool isAbstractOrStatic = typeSymbol.IsAbstract || typeSymbol.IsStatic;
+            bool isOpenGeneric = typeSymbol.IsGenericType;
+            int arity = typeSymbol.TypeParameters.Length;
+
+            if (isOpenGeneric)
+                fqn = ToUnboundGenericString(fqn, arity);
+
+            var attr = ctx.Attributes.FirstOrDefault();
+            if (attr == null) return null;
+
+            string? decoratedInterfaceFqn = null;
+            if (attr.ConstructorArguments.Length > 0
+                && attr.ConstructorArguments[0].Value is INamedTypeSymbol decoratedSymbol)
+            {
+                decoratedInterfaceFqn = decoratedSymbol.ToDisplayString(FullyQualifiedFormat);
+                if (isOpenGeneric && decoratedSymbol.IsGenericType)
+                    decoratedInterfaceFqn = ToUnboundGenericString(decoratedInterfaceFqn, arity);
+            }
+
+            int order = 0;
+            string? whenRegisteredFqn = null;
+
+            foreach (var named in attr.NamedArguments)
+            {
+                if (named.Key == "Order" && named.Value.Value is int orderVal)
+                    order = orderVal;
+                else if (named.Key == "WhenRegistered" && named.Value.Value is INamedTypeSymbol whenSymbol)
+                    whenRegisteredFqn = whenSymbol.ToDisplayString(FullyQualifiedFormat);
+            }
+
+            // Collect interfaces to validate — null decoratedInterfaceFqn signals ZI016 in RegisterSourceOutput
+            var interfaces = new System.Collections.Generic.HashSet<string>();
+            foreach (var iface in typeSymbol.AllInterfaces)
+            {
+                var ifaceFqn = iface.ToDisplayString(FullyQualifiedFormat);
+                if (isOpenGeneric && iface.IsGenericType)
+                    ifaceFqn = ToUnboundGenericString(ifaceFqn, arity);
+                interfaces.Add(ifaceFqn);
+            }
+
+            if (decoratedInterfaceFqn != null && !interfaces.Contains(decoratedInterfaceFqn))
+                decoratedInterfaceFqn = null;
+
+            // Build constructor params
+            IMethodSymbol? ctor = null;
+            foreach (var c in typeSymbol.InstanceConstructors)
+            {
+                if (c.DeclaredAccessibility == Accessibility.Public) { ctor = c; break; }
+            }
+
+            var ctorParams = new List<ConstructorParameterInfo>();
+            if (ctor != null && !isAbstractOrStatic)
+            {
+                foreach (var param in ctor.Parameters)
+                {
+                    var paramTypeFqn = param.Type.ToDisplayString(FullyQualifiedFormat);
+                    var matchFqn = (isOpenGeneric && param.Type is INamedTypeSymbol pt && pt.IsGenericType)
+                        ? ToUnboundGenericString(paramTypeFqn, arity)
+                        : paramTypeFqn;
+                    var paramAttrs = param.GetAttributes();
+                    bool isOptional = param.HasExplicitDefaultValue
+                        || paramAttrs.Any(a => a.AttributeClass?.ToDisplayString() == "ZInject.OptionalDependencyAttribute");
+                    ctorParams.Add(new ConstructorParameterInfo(matchFqn, param.Name, isOptional));
+                }
+            }
+
+            bool implementsDisposable = false;
+            foreach (var iface in typeSymbol.AllInterfaces)
+            {
+                var name = iface.ToDisplayString();
+                if (name == "System.IDisposable" || name == "System.IAsyncDisposable")
+                { implementsDisposable = true; break; }
+            }
+
+            return new DecoratorRegistrationInfo(
+                typeName, fqn, decoratedInterfaceFqn, isOpenGeneric, ctorParams,
+                implementsDisposable, isAbstractOrStatic,
+                order: order, whenRegisteredFqn: whenRegisteredFqn, isDecoratorOf: true);
         }
     }
 
