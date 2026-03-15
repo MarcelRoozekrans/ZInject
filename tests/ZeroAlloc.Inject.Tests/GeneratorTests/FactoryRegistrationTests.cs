@@ -69,7 +69,7 @@ public class FactoryRegistrationTests
     }
 
     [Fact]
-    public void MultipleConstructors_WithoutAttribute_ProducesZI009()
+    public void MultipleConstructors_WithoutAttribute_ProducesZAI009()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -87,11 +87,11 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI009", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI009", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void PrimitiveParameter_String_ProducesZI010()
+    public void PrimitiveParameter_String_ProducesZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -108,11 +108,11 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void PrimitiveParameter_Int_ProducesZI010()
+    public void PrimitiveParameter_Int_ProducesZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -129,7 +129,7 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class FactoryRegistrationTests
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
         Assert.Contains("sp.GetRequiredService<global::TestApp.IRepo>()", output);
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI009", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI009", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -337,7 +337,7 @@ public class FactoryRegistrationTests
     }
 
     [Fact]
-    public void InterfaceParameter_DoesNotProduceZI010()
+    public void InterfaceParameter_DoesNotProduceZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -355,11 +355,11 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ClassParameter_DoesNotProduceZI010()
+    public void ClassParameter_DoesNotProduceZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -377,12 +377,12 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
         Assert.Contains("sp.GetRequiredService<global::TestApp.SomeDependency>()", output);
     }
 
     [Fact]
-    public void PrimitiveParameter_Bool_ProducesZI010()
+    public void PrimitiveParameter_Bool_ProducesZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -399,11 +399,11 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void PrimitiveParameter_Enum_ProducesZI010()
+    public void PrimitiveParameter_Enum_ProducesZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -421,11 +421,11 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void PrimitiveParameter_Struct_ProducesZI010()
+    public void PrimitiveParameter_Struct_ProducesZAI010()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -443,7 +443,7 @@ public class FactoryRegistrationTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI010", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI010", StringComparison.Ordinal));
     }
 
     [Fact]

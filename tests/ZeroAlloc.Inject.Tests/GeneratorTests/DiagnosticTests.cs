@@ -6,7 +6,7 @@ namespace ZeroAlloc.Inject.Tests.GeneratorTests;
 public class DiagnosticTests
 {
     [Fact]
-    public void NoPublicConstructor_ProducesZI006()
+    public void NoPublicConstructor_ProducesZAI006()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -21,11 +21,11 @@ public class DiagnosticTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI006", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI006", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void NoInterfaces_ProducesZI007()
+    public void NoInterfaces_ProducesZAI007()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -37,11 +37,11 @@ public class DiagnosticTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZI007", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, d => string.Equals(d.Id, "ZAI007", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void WithInterfaces_DoesNotProduceZI007()
+    public void WithInterfaces_DoesNotProduceZAI007()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -55,11 +55,11 @@ public class DiagnosticTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI007", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI007", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void WithPublicConstructor_DoesNotProduceZI006()
+    public void WithPublicConstructor_DoesNotProduceZAI006()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -74,11 +74,11 @@ public class DiagnosticTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI006", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI006", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ImplicitDefaultConstructor_DoesNotProduceZI006()
+    public void ImplicitDefaultConstructor_DoesNotProduceZAI006()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -92,11 +92,11 @@ public class DiagnosticTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI006", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI006", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void MixedConstructors_PublicExists_DoesNotProduceZI006()
+    public void MixedConstructors_PublicExists_DoesNotProduceZAI006()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -114,7 +114,7 @@ public class DiagnosticTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
 
-        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZI006", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, d => string.Equals(d.Id, "ZAI006", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void ZI011_DecoratorWithNoMatchingInterface_ReportsError()
+    public void ZAI011_DecoratorWithNoMatchingInterface_ReportsError()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -152,11 +152,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI011", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI011", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI012_DecoratorWithNoRegisteredInner_ReportsError()
+    public void ZAI012_DecoratorWithNoRegisteredInner_ReportsError()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -169,11 +169,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI012", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI012", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI013_AbstractDecorator_ReportsWarning()
+    public void ZAI013_AbstractDecorator_ReportsWarning()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -186,11 +186,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI013", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI013", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI014_CircularDependency_AB_ReportsError()
+    public void ZAI014_CircularDependency_AB_ReportsError()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -203,11 +203,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI014", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI014_NoCycle_NoDiagnostic()
+    public void ZAI014_NoCycle_NoDiagnostic()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -220,11 +220,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZAI014", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI014_ThreeNodeCycle_ReportsError()
+    public void ZAI014_ThreeNodeCycle_ReportsError()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -237,11 +237,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI014", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI014_OptionalDependencyBreaksCycle_NoDiagnostic()
+    public void ZAI014_OptionalDependencyBreaksCycle_NoDiagnostic()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -254,11 +254,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZAI014", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI014_DecoratorSelfReference_NotFlagged()
+    public void ZAI014_DecoratorSelfReference_NotFlagged()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -273,7 +273,7 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI014", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZAI014", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -297,7 +297,7 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void OptionalDependency_OnNonNullableParameter_ReportsZI015()
+    public void OptionalDependency_OnNonNullableParameter_ReportsZAI015()
     {
         var source = """
             #nullable enable
@@ -312,11 +312,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI015", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI015", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void DecoratorOf_InterfaceNotImplemented_ReportsZI016()
+    public void DecoratorOf_InterfaceNotImplemented_ReportsZAI016()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -332,12 +332,12 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI016", StringComparison.Ordinal));
-        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI011", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI016", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZAI011", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void DecoratorOf_DuplicateOrder_ReportsZI017()
+    public void DecoratorOf_DuplicateOrder_ReportsZAI017()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -357,11 +357,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI017", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI017", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI018_OpenGenericNoDetectedUsages_ReportsWarning()
+    public void ZAI018_OpenGenericNoDetectedUsages_ReportsWarning()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -371,14 +371,14 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI018", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI018", StringComparison.Ordinal));
         Assert.All(
-            diagnostics.Where(static d => string.Equals(d.Id, "ZI018", StringComparison.Ordinal)).ToList(),
+            diagnostics.Where(static d => string.Equals(d.Id, "ZAI018", StringComparison.Ordinal)).ToList(),
             static d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity));
     }
 
     [Fact]
-    public void ZI018_OpenGenericWithDetectedUsage_NoWarning()
+    public void ZAI018_OpenGenericWithDetectedUsage_NoWarning()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -393,11 +393,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI018", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZAI018", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI018_OpenGenericWithAsNarrowing_NoDetectedUsages_ReportsWarning()
+    public void ZAI018_OpenGenericWithAsNarrowing_NoDetectedUsages_ReportsWarning()
     {
         // As narrows to IReadRepo<> but no consumer of IReadRepo<SomeType> exists
         var source = """
@@ -409,11 +409,11 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZI018", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, static d => string.Equals(d.Id, "ZAI018", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ZI018_OpenGenericWithAsNarrowing_WithDetectedUsage_NoWarning()
+    public void ZAI018_OpenGenericWithAsNarrowing_WithDetectedUsage_NoWarning()
     {
         var source = """
             using ZeroAlloc.Inject;
@@ -429,6 +429,6 @@ public class DiagnosticTests
             """;
 
         var (_, diagnostics) = GeneratorTestHelper.RunGenerator(source);
-        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZI018", StringComparison.Ordinal));
+        Assert.DoesNotContain(diagnostics, static d => string.Equals(d.Id, "ZAI018", StringComparison.Ordinal));
     }
 }
