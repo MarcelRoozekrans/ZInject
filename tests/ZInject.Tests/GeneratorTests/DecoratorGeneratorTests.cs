@@ -181,6 +181,7 @@ public class DecoratorGeneratorTests
 
         var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
         Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("using System.Linq;", output);
         Assert.Contains("services.Any(d => d.ServiceType == typeof(global::SomeOptions))", output);
         Assert.Contains("new global::ConditionalFoo", output);
     }
