@@ -20,12 +20,12 @@ public class MethodNamingTests
     }
 
     [Fact]
-    public void ZInjectAttribute_OverridesMethodName()
+    public void ZeroAllocInjectAttribute_OverridesMethodName()
     {
         var source = """
             using ZeroAlloc.Inject;
 
-            [assembly: ZInject("AddDomainServices")]
+            [assembly: ZeroAllocInject("AddDomainServices")]
 
             namespace TestApp;
 
@@ -45,7 +45,7 @@ public class MethodNamingTests
         var source = """
             using ZeroAlloc.Inject;
 
-            [assembly: ZInject("AddDomainServices")]
+            [assembly: ZeroAllocInject("AddDomainServices")]
 
             namespace TestApp;
 
@@ -64,7 +64,7 @@ public class MethodNamingTests
         var source = """
             using ZeroAlloc.Inject;
 
-            [assembly: ZInject("RegisterServices")]
+            [assembly: ZeroAllocInject("RegisterServices")]
 
             namespace TestApp;
 
