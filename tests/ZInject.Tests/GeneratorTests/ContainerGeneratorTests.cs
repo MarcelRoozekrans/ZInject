@@ -1269,4 +1269,49 @@ public class ContainerGeneratorTests
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         Assert.Contains("IServiceProviderIsKeyedService", output);
     }
+
+    [Fact]
+    public void HybridContainer_DecoratorOf_NonGeneric_WrapsInTypeSwitch()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo))]
+            public class LoggingFoo : IFoo
+            {
+                public LoggingFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.Contains("new global::LoggingFoo", output);
+        Assert.Contains("new global::FooImpl", output);
+        var fooIdx = output.IndexOf("typeof(global::IFoo)");
+        var loggingIdx = output.IndexOf("new global::LoggingFoo", fooIdx);
+        Assert.True(fooIdx >= 0 && loggingIdx > fooIdx);
+    }
+
+    [Fact]
+    public void Standalone_DecoratorOf_NonGeneric_WrapsInTypeSwitch()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo))]
+            public class LoggingFoo : IFoo
+            {
+                public LoggingFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        var standaloneIdx = output.IndexOf("StandaloneServiceProvider");
+        var fooIdx = output.IndexOf("typeof(global::IFoo)", standaloneIdx);
+        var loggingIdx = output.IndexOf("new global::LoggingFoo", fooIdx);
+        Assert.True(loggingIdx > fooIdx, "Standalone should emit LoggingFoo wrapping FooImpl");
+    }
 }

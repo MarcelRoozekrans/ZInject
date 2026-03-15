@@ -1295,6 +1295,68 @@ public class IntegrationTests
     }
 
     // ---------------------------------------------------------------
+    // DecoratorOf 1. Non-generic [DecoratorOf] via hybrid container
+    // ---------------------------------------------------------------
+    [Fact]
+    public void DecoratorOf_NonGeneric_HybridContainer_ReturnsDecoratedInstance()
+    {
+        const string source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IFoo { string Tag { get; } }
+            [Transient]
+            public class FooImpl : IFoo { public string Tag => "impl"; }
+            [DecoratorOf(typeof(IFoo))]
+            public class LoggingFoo : IFoo
+            {
+                private readonly IFoo _inner;
+                public LoggingFoo(IFoo inner) { _inner = inner; }
+                public string Tag => "logging:" + _inner.Tag;
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateProvider(source);
+        var fooType = assembly.GetType("TestApp.IFoo")!;
+        var tagProp = fooType.GetProperty("Tag")!;
+
+        var instance = provider.GetService(fooType);
+
+        Assert.NotNull(instance);
+        Assert.Equal("logging:impl", (string)tagProp.GetValue(instance)!);
+    }
+
+    // ---------------------------------------------------------------
+    // DecoratorOf 2. Non-generic [DecoratorOf] via standalone container
+    // ---------------------------------------------------------------
+    [Fact]
+    public void DecoratorOf_NonGeneric_Standalone_ReturnsDecoratedInstance()
+    {
+        const string source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IFoo { string Tag { get; } }
+            [Transient]
+            public class FooImpl : IFoo { public string Tag => "impl"; }
+            [DecoratorOf(typeof(IFoo))]
+            public class LoggingFoo : IFoo
+            {
+                private readonly IFoo _inner;
+                public LoggingFoo(IFoo inner) { _inner = inner; }
+                public string Tag => "logging:" + _inner.Tag;
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var fooType = assembly.GetType("TestApp.IFoo")!;
+        var tagProp = fooType.GetProperty("Tag")!;
+
+        var instance = provider.GetService(fooType);
+
+        Assert.NotNull(instance);
+        Assert.Equal("logging:impl", (string)tagProp.GetValue(instance)!);
+    }
+
+    // ---------------------------------------------------------------
     // Decorator 3. Non-generic decorator via MS DI extension method
     // ---------------------------------------------------------------
     [Fact]

@@ -268,4 +268,29 @@ public class DecoratorGeneratorTests
         // LoggingRetriever (Order=1, innermost) is registered before TracingRetriever (Order=2, outermost) wraps it
         Assert.True(output.IndexOf("LoggingRetriever") < output.IndexOf("TracingRetriever"));
     }
+
+    [Fact]
+    public void DecoratorOf_AllowMultiple_OneClassDecoratesTwoInterfaces_GeneratesBoth()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public interface IBar { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [Transient]
+            public class BarImpl : IBar { }
+            [DecoratorOf(typeof(IFoo))]
+            [DecoratorOf(typeof(IBar))]
+            public class MultiDecorator : IFoo, IBar
+            {
+                public MultiDecorator(IFoo foo, IBar bar) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        // MultiDecorator should appear in the IFoo chain
+        Assert.Contains("new global::MultiDecorator", output);
+    }
 }
