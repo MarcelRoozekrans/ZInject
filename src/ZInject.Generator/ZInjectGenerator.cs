@@ -520,7 +520,12 @@ namespace ZInject.Generator
                         && namedParam.IsGenericType
                         && !namedParam.IsUnboundGenericType)
                     {
-                        unboundFqn = namedParam.ConstructedFrom.ToDisplayString(FullyQualifiedFormat);
+                        // Use ToUnboundGenericString so the format matches ServiceRegistrationInfo.Interfaces,
+                        // which also stores open-generic interfaces in the "global::Ns.IFoo<,>" form (via
+                        // ToUnboundGenericString at line ~421). Both sides must agree on the same format so
+                        // that FindClosedGenericUsages can look up svc.Interfaces by UnboundGenericInterfaceFqn.
+                        var rawFqn = namedParam.ConstructedFrom.ToDisplayString(FullyQualifiedFormat);
+                        unboundFqn = ToUnboundGenericString(rawFqn, namedParam.TypeArguments.Length);
                         var taBuilder = ImmutableArray.CreateBuilder<string>(namedParam.TypeArguments.Length);
                         foreach (var typeArg in namedParam.TypeArguments)
                         {

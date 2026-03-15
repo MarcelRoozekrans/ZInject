@@ -50,6 +50,7 @@ namespace ZInject.Generator
                 hash = hash * 31 + ParameterName.GetHashCode();
                 hash = hash * 31 + IsOptional.GetHashCode();
                 hash = hash * 31 + (UnboundGenericInterfaceFqn?.GetHashCode() ?? 0);
+                hash = hash * 31 + TypeArgumentMetadataNames.Length.GetHashCode();
                 return hash;
             }
         }
