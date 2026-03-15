@@ -3043,14 +3043,14 @@ namespace ZInject.Generator
                                 : ta.MetadataName);
                         }
                         ctorTypeArgMeta = metaBuilder.ToImmutable();
-
-                        // Add to work queue for fixed-point iteration
-                        workQueue.Enqueue(new ConstructorParameterInfo(
-                            ctorParamFqn, ctorParam.Name, false, ctorUnboundFqn, ctorTypeArgMeta));
                     }
 
-                    ctorParams.Add(new ConstructorParameterInfo(
-                        ctorParamFqn, ctorParam.Name, false, ctorUnboundFqn, ctorTypeArgMeta));
+                    var ctorParamInfo = new ConstructorParameterInfo(
+                        ctorParamFqn, ctorParam.Name, false, ctorUnboundFqn, ctorTypeArgMeta);
+                    // Add to work queue for fixed-point iteration if it is a closed generic
+                    if (ctorUnboundFqn != null)
+                        workQueue.Enqueue(ctorParamInfo);
+                    ctorParams.Add(ctorParamInfo);
                 }
 
                 results.Add(new ClosedGenericFactoryInfo(
