@@ -164,6 +164,49 @@ public class DecoratorGeneratorTests
     }
 
     [Fact]
+    public void DecoratorOf_WhenRegistered_EmitsConditionalCheck()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            public class SomeOptions { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo), WhenRegistered = typeof(SomeOptions))]
+            public class ConditionalFoo : IFoo
+            {
+                public ConditionalFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("services.Any(d => d.ServiceType == typeof(global::SomeOptions))", output);
+        Assert.Contains("new global::ConditionalFoo", output);
+    }
+
+    [Fact]
+    public void DecoratorOf_NoWhenRegistered_DoesNotEmitConditionalCheck()
+    {
+        var source = """
+            using ZInject;
+            public interface IFoo { }
+            [Transient]
+            public class FooImpl : IFoo { }
+            [DecoratorOf(typeof(IFoo))]
+            public class UnconditionalFoo : IFoo
+            {
+                public UnconditionalFoo(IFoo inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain("services.Any", output);
+        Assert.Contains("new global::UnconditionalFoo", output);
+    }
+
+    [Fact]
     public void DecoratorOf_Order_InnerMostFirst()
     {
         var source = """

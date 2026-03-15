@@ -684,11 +684,8 @@ namespace ZInject.Generator
             {
                 if (!svc.IsOpenGeneric && decoratorsByInterface.TryGetValue(iface, out var decorators))
                 {
-                    // Emit factory wrapping with chained decorators
-                    var decoratorFactory = BuildDecoratorFactoryLambdaChained(decorators, fqn);
-                    sb.AppendLine(string.Format(
-                        "            services.Add{0}<{1}>({2});",
-                        lifetime, iface, decoratorFactory));
+                    // Emit factory wrapping with chained decorators, applying WhenRegistered guards per decorator
+                    EmitDecoratorRegistrations(sb, lifetime, iface, fqn, decorators);
                 }
                 else
                 {
@@ -698,6 +695,85 @@ namespace ZInject.Generator
 
             // Always register concrete type (inner needs to be resolvable by itself)
             EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+        }
+
+        private static void EmitDecoratorRegistrations(
+            StringBuilder sb,
+            string lifetime,
+            string ifaceFqn,
+            string innerConcreteFqn,
+            List<DecoratorRegistrationInfo> decorators)
+        {
+            // Check if any decorator has a WhenRegistered guard
+            bool hasAnyConditional = false;
+            foreach (var dec in decorators)
+            {
+                if (dec.WhenRegisteredFqn != null)
+                {
+                    hasAnyConditional = true;
+                    break;
+                }
+            }
+
+            if (!hasAnyConditional)
+            {
+                // Fast path: no conditional decorators, emit the full chain as a single registration
+                var decoratorFactory = BuildDecoratorFactoryLambdaChained(decorators, innerConcreteFqn);
+                sb.AppendLine(string.Format(
+                    "            services.Add{0}<{1}>({2});",
+                    lifetime, ifaceFqn, decoratorFactory));
+                return;
+            }
+
+            // Slow path: at least one conditional decorator — emit per-decorator registrations
+            // We build the chain incrementally. Unconditional decorators up to each conditional one
+            // are folded into the chain expression before the conditional check.
+            var currentInner = innerConcreteFqn;
+            // Split decorators into groups: run of unconditional, then a conditional
+            // For simplicity, process each decorator individually, accumulating the chain
+            var unconditionalAccumulator = new System.Collections.Generic.List<DecoratorRegistrationInfo>();
+
+            foreach (var dec in decorators)
+            {
+                if (dec.WhenRegisteredFqn == null)
+                {
+                    // Unconditional: accumulate for later chain building
+                    unconditionalAccumulator.Add(dec);
+                }
+                else
+                {
+                    // Conditional decorator: first flush unconditional ones if any, then emit conditional
+                    // Build the chain so far with unconditional + this conditional decorator
+                    var chainDecorators = new System.Collections.Generic.List<DecoratorRegistrationInfo>(unconditionalAccumulator) { dec };
+                    var decoratorFactory = BuildDecoratorFactoryLambdaChained(chainDecorators, currentInner);
+
+                    sb.AppendLine(string.Format(
+                        "            if (services.Any(d => d.ServiceType == typeof({0})))",
+                        dec.WhenRegisteredFqn));
+                    sb.AppendLine("            {");
+                    sb.AppendLine(string.Format(
+                        "                services.Add{0}<{1}>({2});",
+                        lifetime, ifaceFqn, decoratorFactory));
+                    sb.AppendLine("            }");
+
+                    // After a conditional registration, the chain is emitted inside the guard.
+                    // For subsequent decorators, they would wrap the result of this conditional.
+                    // Since we cannot know at generation time whether the conditional registration
+                    // ran, we reset the accumulator and continue chaining on the same base.
+                    unconditionalAccumulator.Clear();
+                    // Note: currentInner stays the same — subsequent decorators wrap from the concrete
+                }
+            }
+
+            // If there are remaining unconditional decorators that were never followed by a conditional,
+            // emit them as a plain registration
+            if (unconditionalAccumulator.Count > 0)
+            {
+                var decoratorFactory = BuildDecoratorFactoryLambdaChained(unconditionalAccumulator, currentInner);
+                sb.AppendLine(string.Format(
+                    "            services.Add{0}<{1}>({2});",
+                    lifetime, ifaceFqn, decoratorFactory));
+            }
         }
 
         private static string BuildDecoratorFactoryLambdaChained(
