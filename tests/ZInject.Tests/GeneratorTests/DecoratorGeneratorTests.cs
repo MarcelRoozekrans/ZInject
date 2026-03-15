@@ -234,4 +234,38 @@ public class DecoratorGeneratorTests
         Assert.True(innerIdx >= 0 && outerIdx >= 0, "Both decorators must appear in output");
         Assert.True(outerIdx < innerIdx, "OuterFoo (Order=2) is the outermost wrapper and must appear first in the generated expression");
     }
+
+    [Fact]
+    public void DecoratorOf_FullChain_OrderAndWhenRegisteredAndOptional()
+    {
+        var source = """
+            using ZInject;
+            public interface IRetriever { }
+            public class SomeOptions { }
+            public interface ILogger { }
+            [Transient]
+            public class RealRetriever : IRetriever { }
+            [DecoratorOf(typeof(IRetriever), Order = 1, WhenRegistered = typeof(SomeOptions))]
+            public class LoggingRetriever : IRetriever
+            {
+                public LoggingRetriever(IRetriever inner, [OptionalDependency] ILogger? logger) { }
+            }
+            [DecoratorOf(typeof(IRetriever), Order = 2)]
+            public class TracingRetriever : IRetriever
+            {
+                public TracingRetriever(IRetriever inner) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        // Order=1 LoggingRetriever wraps RealRetriever, conditional on SomeOptions
+        Assert.Contains("services.Any(d => d.ServiceType == typeof(global::SomeOptions))", output);
+        Assert.Contains("new global::LoggingRetriever", output);
+        Assert.Contains("GetService<global::ILogger>", output);         // optional dep
+        // Order=2 TracingRetriever wraps unconditionally
+        Assert.Contains("new global::TracingRetriever", output);
+        // Order: LoggingRetriever emitted before TracingRetriever
+        Assert.True(output.IndexOf("LoggingRetriever") < output.IndexOf("TracingRetriever"));
+    }
 }

@@ -101,6 +101,30 @@ Override the generated method name with an assembly-level attribute:
 [assembly: ZInject("AddDomainServices")]
 ```
 
+### Decorator Ordering and Conditional Decorators
+
+`[DecoratorOf]` is the explicit form of `[Decorator]` — it names the decorated interface, controls ordering, and supports conditional application.
+
+```csharp
+[DecoratorOf(typeof(IRetriever), Order = 1, WhenRegistered = typeof(SomeOptions))]
+public class LoggingRetriever : IRetriever
+{
+    public LoggingRetriever(IRetriever inner, [OptionalDependency] ILogger? logger) { }
+}
+
+[DecoratorOf(typeof(IRetriever), Order = 2)]
+public class TracingRetriever : IRetriever
+{
+    public TracingRetriever(IRetriever inner) { }
+}
+```
+
+**`Order`** — ascending: `Order = 1` is innermost (closest to the real implementation). Higher numbers wrap further out.
+
+**`WhenRegistered`** — the decorator is only wired up if the specified type is present in the `IServiceCollection` at the time `AddXxxServices()` is called. One O(n) scan at startup; no impact on resolution.
+
+**`[OptionalDependency]`** — marks a constructor parameter as optional. The generator emits `GetService<T>()` (returns `null`) instead of `GetRequiredService<T>()` (throws). The parameter must be nullable (`ILogger?`).
+
 ## Diagnostics
 
 ZInject reports issues at compile time:
@@ -117,6 +141,9 @@ ZInject reports issues at compile time:
 | ZI008 | Warning | Missing `Microsoft.Extensions.DependencyInjection.Abstractions` |
 | ZI009 | Error | Multiple public constructors without `[ActivatorUtilitiesConstructor]` |
 | ZI010 | Error | Constructor parameter is a primitive/value type |
+| ZI015 | Error | `[OptionalDependency]` on non-nullable parameter |
+| ZI016 | Error | `[DecoratorOf]` interface not implemented by the class |
+| ZI017 | Error | Two decorators for the same interface share the same `Order` |
 
 ## Generated Container
 
