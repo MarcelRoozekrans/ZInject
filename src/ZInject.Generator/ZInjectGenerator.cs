@@ -113,23 +113,31 @@ namespace ZInject.Generator
                     return builder.ToImmutable();
                 });
 
+            var closedGenericUsages = transients
+                .Combine(scopeds)
+                .Combine(singletons)
+                .Combine(context.CompilationProvider)
+                .Select(static (data, ct) => FindClosedGenericUsages(data, ct));
+
             var combined = transients
                 .Combine(scopeds)
                 .Combine(singletons)
                 .Combine(assemblyAttr)
                 .Combine(assemblyName)
                 .Combine(hasContainer)
-                .Combine(allDecorators);
+                .Combine(allDecorators)
+                .Combine(closedGenericUsages);
 
             context.RegisterSourceOutput(combined, static (spc, data) =>
             {
-                var transientInfos = data.Left.Left.Left.Left.Left.Left;
-                var scopedInfos    = data.Left.Left.Left.Left.Left.Right;
-                var singletonInfos = data.Left.Left.Left.Left.Right;
-                var methodNameOverrides = data.Left.Left.Left.Right;
-                var asmName        = data.Left.Left.Right;
-                var containerReferenced = data.Left.Right;
-                var decoratorInfos = data.Right;
+                var closedGenericFactories = data.Right;  // NEW
+                var transientInfos = data.Left.Left.Left.Left.Left.Left.Left;
+                var scopedInfos    = data.Left.Left.Left.Left.Left.Left.Right;
+                var singletonInfos = data.Left.Left.Left.Left.Left.Right;
+                var methodNameOverrides = data.Left.Left.Left.Left.Right;
+                var asmName        = data.Left.Left.Left.Right;
+                var containerReferenced = data.Left.Left.Right;
+                var decoratorInfos = data.Left.Right;
 
                 var allServices = new List<ServiceRegistrationInfo>();
                 AddNonNull(allServices, transientInfos);
@@ -293,6 +301,9 @@ namespace ZInject.Generator
                     var standaloneCode = GenerateStandaloneServiceProviderClass(allServices, asmName, decoratorsByInterface);
                     spc.AddSource(asmName + ".StandaloneServiceProvider.g.cs", standaloneCode);
                 }
+
+                // closedGenericFactories will be used in Task 3 (code generation)
+                _ = closedGenericFactories;
             });
         }
 
@@ -2936,6 +2947,120 @@ namespace ZInject.Generator
                 typeName, fqn, decoratedInterfaceFqn, isOpenGeneric, ctorParams,
                 implementsDisposable, isAbstractOrStatic,
                 order: order, whenRegisteredFqn: whenRegisteredFqn, isDecoratorOf: true);
+        }
+
+        private static ImmutableArray<ClosedGenericFactoryInfo> FindClosedGenericUsages(
+            (((ImmutableArray<ServiceRegistrationInfo?> transients,
+               ImmutableArray<ServiceRegistrationInfo?> scopeds),
+              ImmutableArray<ServiceRegistrationInfo?> singletons),
+             Compilation compilation) data,
+            CancellationToken ct)
+        {
+            var transients  = data.Item1.Item1.Item1;
+            var scopeds     = data.Item1.Item1.Item2;
+            var singletons  = data.Item1.Item2;
+            var compilation = data.Item2;
+
+            // Build lookup: unbound interface FQN (global::IFoo<,> form) → open generic ServiceRegistrationInfo
+            var openGenericMap = new Dictionary<string, ServiceRegistrationInfo>(StringComparer.Ordinal);
+            foreach (var svc in transients.Concat(scopeds).Concat(singletons))
+            {
+                if (svc == null || !svc.IsOpenGeneric || svc.ImplementationMetadataName == null) continue;
+                var ifaces = svc.AsType != null ? new List<string> { svc.AsType } : svc.Interfaces;
+                foreach (var iface in ifaces)
+                    if (!openGenericMap.ContainsKey(iface))
+                        openGenericMap[iface] = svc;
+            }
+
+            if (openGenericMap.Count == 0) return ImmutableArray<ClosedGenericFactoryInfo>.Empty;
+
+            // Seed work queue from all constructor parameters of all registered services
+            var workQueue = new Queue<ConstructorParameterInfo>();
+            var processed = new HashSet<string>(StringComparer.Ordinal); // keyed by closed interface FQN
+            var results = new List<ClosedGenericFactoryInfo>();
+
+            foreach (var svc in transients.Concat(scopeds).Concat(singletons))
+            {
+                if (svc == null) continue;
+                foreach (var param in svc.ConstructorParameters)
+                    if (param.UnboundGenericInterfaceFqn != null)
+                        workQueue.Enqueue(param);
+            }
+
+            while (workQueue.Count > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                var param = workQueue.Dequeue();
+                var closedFqn = param.FullyQualifiedTypeName;
+
+                if (!processed.Add(closedFqn)) continue;
+                if (param.UnboundGenericInterfaceFqn == null) continue;
+                if (!openGenericMap.TryGetValue(param.UnboundGenericInterfaceFqn, out var og)) continue;
+
+                // Resolve impl symbol and close it
+                var implSymbol = compilation.GetTypeByMetadataName(og.ImplementationMetadataName!);
+                if (implSymbol == null) continue;
+
+                var typeArgSymbols = new ITypeSymbol[param.TypeArgumentMetadataNames.Length];
+                bool allResolved = true;
+                for (int i = 0; i < param.TypeArgumentMetadataNames.Length; i++)
+                {
+                    var sym = compilation.GetTypeByMetadataName(param.TypeArgumentMetadataNames[i]);
+                    if (sym == null) { allResolved = false; break; }
+                    typeArgSymbols[i] = sym;
+                }
+                if (!allResolved) continue;
+
+                var closedImpl = implSymbol.Construct(typeArgSymbols);
+                var closedImplFqn = closedImpl.ToDisplayString(FullyQualifiedFormat);
+
+                // Build constructor parameters for the closed implementation (type args substituted by Roslyn)
+                var ctor = closedImpl.InstanceConstructors
+                    .Where(static c => c.DeclaredAccessibility == Accessibility.Public)
+                    .OrderByDescending(static c => c.Parameters.Length)
+                    .FirstOrDefault();
+                if (ctor == null) continue;
+
+                var ctorParams = ImmutableArray.CreateBuilder<ConstructorParameterInfo>(ctor.Parameters.Length);
+                foreach (var ctorParam in ctor.Parameters)
+                {
+                    var ctorParamFqn = ctorParam.Type.ToDisplayString(FullyQualifiedFormat);
+                    string? ctorUnboundFqn = null;
+                    ImmutableArray<string> ctorTypeArgMeta = ImmutableArray<string>.Empty;
+
+                    if (ctorParam.Type is INamedTypeSymbol namedCtorParam
+                        && namedCtorParam.IsGenericType && !namedCtorParam.IsUnboundGenericType)
+                    {
+                        var rawUnbound = namedCtorParam.ConstructedFrom.ToDisplayString(FullyQualifiedFormat);
+                        ctorUnboundFqn = ToUnboundGenericString(rawUnbound, namedCtorParam.TypeArguments.Length);
+                        var metaBuilder = ImmutableArray.CreateBuilder<string>(namedCtorParam.TypeArguments.Length);
+                        foreach (var ta in namedCtorParam.TypeArguments)
+                        {
+                            var taNamespace = ta.ContainingNamespace is { IsGlobalNamespace: false } taNs
+                                ? taNs.ToDisplayString() : null;
+                            metaBuilder.Add(taNamespace != null
+                                ? taNamespace + "." + ta.MetadataName
+                                : ta.MetadataName);
+                        }
+                        ctorTypeArgMeta = metaBuilder.ToImmutable();
+
+                        // Add to work queue for fixed-point iteration
+                        workQueue.Enqueue(new ConstructorParameterInfo(
+                            ctorParamFqn, ctorParam.Name, false, ctorUnboundFqn, ctorTypeArgMeta));
+                    }
+
+                    ctorParams.Add(new ConstructorParameterInfo(
+                        ctorParamFqn, ctorParam.Name, false, ctorUnboundFqn, ctorTypeArgMeta));
+                }
+
+                results.Add(new ClosedGenericFactoryInfo(
+                    closedFqn,
+                    closedImplFqn,
+                    og.Lifetime,
+                    ctorParams.ToImmutable()));
+            }
+
+            return results.ToImmutableArray();
         }
     }
 

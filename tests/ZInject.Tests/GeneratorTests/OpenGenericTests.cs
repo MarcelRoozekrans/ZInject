@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+
 namespace ZInject.Tests.GeneratorTests;
 
 public class OpenGenericTests
@@ -93,5 +95,32 @@ public class OpenGenericTests
 
         Assert.Contains("services.Add(ServiceDescriptor.Scoped(", output);
         Assert.DoesNotContain("TryAdd", output);
+    }
+
+    [Fact]
+    public void OpenGeneric_StandaloneContainer_EmitsExplicitClosedTypeEntry()
+    {
+        var source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IRepository<T> { }
+            public class OrderContext { }
+            [Transient]
+            public class Repository<T> : IRepository<T>
+            {
+                public Repository(OrderContext ctx) { }
+            }
+            [Transient]
+            public class OrderService
+            {
+                public OrderService(IRepository<OrderContext> repo) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("typeof(global::TestApp.IRepository<global::TestApp.OrderContext>)", output);
+        Assert.DoesNotContain("MakeGenericType", output);
+        Assert.DoesNotContain("GetMethod(", output);
     }
 }
