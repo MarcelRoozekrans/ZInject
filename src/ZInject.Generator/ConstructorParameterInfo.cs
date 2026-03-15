@@ -35,7 +35,7 @@ namespace ZInject.Generator
             return FullyQualifiedTypeName == other.FullyQualifiedTypeName
                 && ParameterName == other.ParameterName
                 && IsOptional == other.IsOptional
-                && string.Equals(UnboundGenericInterfaceFqn, other.UnboundGenericInterfaceFqn, StringComparison.Ordinal)
+                && UnboundGenericInterfaceFqn == other.UnboundGenericInterfaceFqn
                 && TypeArgumentMetadataNames.SequenceEqual(other.TypeArgumentMetadataNames);
         }
 
@@ -50,7 +50,8 @@ namespace ZInject.Generator
                 hash = hash * 31 + ParameterName.GetHashCode();
                 hash = hash * 31 + IsOptional.GetHashCode();
                 hash = hash * 31 + (UnboundGenericInterfaceFqn?.GetHashCode() ?? 0);
-                hash = hash * 31 + TypeArgumentMetadataNames.Length.GetHashCode();
+                foreach (var name in TypeArgumentMetadataNames)
+                    hash = hash * 31 + name.GetHashCode();
                 return hash;
             }
         }
