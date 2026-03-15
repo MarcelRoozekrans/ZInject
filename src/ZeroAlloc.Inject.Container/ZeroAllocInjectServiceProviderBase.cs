@@ -2,9 +2,17 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZeroAlloc.Inject.Container;
 
-public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
+public abstract class ZeroAllocInjectServiceProviderBase : IServiceProvider, IServiceScopeFactory, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
 {
+    private readonly IServiceProvider _fallback;
     private int _disposed;
+
+    protected ZeroAllocInjectServiceProviderBase(IServiceProvider fallback)
+    {
+        _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
+    }
+
+    protected IServiceProvider Fallback => _fallback;
 
     public object? GetService(Type serviceType)
     {
@@ -28,7 +36,7 @@ public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScop
             return this;
         }
 
-        return ResolveKnown(serviceType);
+        return ResolveKnown(serviceType) ?? _fallback.GetService(serviceType);
     }
 
     protected abstract object? ResolveKnown(Type serviceType);
@@ -42,20 +50,24 @@ public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScop
         if (serviceType == typeof(IServiceProvider) || serviceType == typeof(IServiceScopeFactory)
             || serviceType == typeof(IServiceProviderIsService) || serviceType == typeof(IServiceProviderIsKeyedService))
             return true;
-        return IsKnownService(serviceType);
+        return IsKnownService(serviceType)
+            || (_fallback as IServiceProviderIsService)?.IsService(serviceType) == true;
     }
 
     public bool IsKeyedService(Type serviceType, object? serviceKey)
     {
-        return IsKnownKeyedService(serviceType, serviceKey);
+        return IsKnownKeyedService(serviceType, serviceKey)
+            || (_fallback as IServiceProviderIsKeyedService)?.IsKeyedService(serviceType, serviceKey) == true;
     }
 
     public IServiceScope CreateScope()
     {
-        return CreateScopeCore();
+        var fallbackScopeFactory = _fallback.GetRequiredService<IServiceScopeFactory>();
+        var fallbackScope = fallbackScopeFactory.CreateScope();
+        return CreateScopeCore(fallbackScope);
     }
 
-    protected abstract ZInjectStandaloneScope CreateScopeCore();
+    protected abstract ZeroAllocInjectScope CreateScopeCore(IServiceScope fallbackScope);
 
     public void Dispose()
     {
@@ -67,18 +79,24 @@ public abstract class ZInjectStandaloneProvider : IServiceProvider, IServiceScop
     {
         if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            // No resources to dispose in standalone base — subclasses override
+            (_fallback as IDisposable)?.Dispose();
         }
     }
 
-    public virtual ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            // No fallback to dispose — just mark as disposed
+            if (_fallback is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                (_fallback as IDisposable)?.Dispose();
+            }
         }
 
         GC.SuppressFinalize(this);
-        return default;
     }
 }

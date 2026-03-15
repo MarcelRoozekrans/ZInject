@@ -2,21 +2,21 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ZeroAlloc.Inject.Container;
 
-public abstract class ZInjectScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
+public abstract class ZeroAllocInjectScope : IServiceScope, IServiceProvider, IServiceProviderIsService, IServiceProviderIsKeyedService, IDisposable, IAsyncDisposable
 {
-    private readonly ZInjectServiceProviderBase _root;
+    private readonly ZeroAllocInjectServiceProviderBase _root;
     private readonly IServiceScope _fallbackScope;
     private readonly object _trackLock = new object();
     private List<object>? _disposables;
     private int _disposed;
 
-    protected ZInjectScope(ZInjectServiceProviderBase root, IServiceScope fallbackScope)
+    protected ZeroAllocInjectScope(ZeroAllocInjectServiceProviderBase root, IServiceScope fallbackScope)
     {
         _root = root ?? throw new ArgumentNullException(nameof(root));
         _fallbackScope = fallbackScope ?? throw new ArgumentNullException(nameof(fallbackScope));
     }
 
-    protected ZInjectServiceProviderBase Root => _root;
+    protected ZeroAllocInjectServiceProviderBase Root => _root;
 
     public IServiceProvider ServiceProvider => this;
 

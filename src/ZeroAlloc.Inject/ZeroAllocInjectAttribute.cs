@@ -1,11 +1,11 @@
 namespace ZeroAlloc.Inject;
 
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = false)]
-public sealed class ZInjectAttribute : Attribute
+public sealed class ZeroAllocInjectAttribute : Attribute
 {
     public string MethodName { get; }
 
-    public ZInjectAttribute(string methodName)
+    public ZeroAllocInjectAttribute(string methodName)
     {
         MethodName = methodName;
     }

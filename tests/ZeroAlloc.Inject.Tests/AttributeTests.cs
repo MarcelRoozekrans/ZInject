@@ -49,9 +49,9 @@ public class AttributeTests
     }
 
     [Fact]
-    public void ZInjectAttribute_StoresMethodName()
+    public void ZeroAllocInjectAttribute_StoresMethodName()
     {
-        var attr = new ZInjectAttribute("AddMyServices");
+        var attr = new ZeroAllocInjectAttribute("AddMyServices");
         Assert.Equal("AddMyServices", attr.MethodName);
     }
 

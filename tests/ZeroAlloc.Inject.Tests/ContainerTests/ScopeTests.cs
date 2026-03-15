@@ -36,12 +36,12 @@ public class ScopeTests
         }
     }
 
-    private sealed class TestScope : ZInjectScope
+    private sealed class TestScope : ZeroAllocInjectScope
     {
         private ScopedService? _scopedInstance;
-        private readonly ZInjectServiceProviderBase _rootRef;
+        private readonly ZeroAllocInjectServiceProviderBase _rootRef;
 
-        public TestScope(ZInjectServiceProviderBase root, IServiceScope fallbackScope)
+        public TestScope(ZeroAllocInjectServiceProviderBase root, IServiceScope fallbackScope)
             : base(root, fallbackScope)
         {
             _rootRef = root;
@@ -69,7 +69,7 @@ public class ScopeTests
         }
     }
 
-    private sealed class TestProvider : ZInjectServiceProviderBase
+    private sealed class TestProvider : ZeroAllocInjectServiceProviderBase
     {
         private SingletonService? _singleton;
 
@@ -90,7 +90,7 @@ public class ScopeTests
 
         protected override bool IsKnownKeyedService(Type serviceType, object? serviceKey) => false;
 
-        protected override ZInjectScope CreateScopeCore(IServiceScope fallbackScope)
+        protected override ZeroAllocInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
 

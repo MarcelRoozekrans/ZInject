@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis;
 namespace ZeroAlloc.Inject.Generator
 {
     [Generator]
-    public sealed class ZInjectGenerator : IIncrementalGenerator
+    public sealed class ZeroAllocInjectGenerator : IIncrementalGenerator
     {
         private static readonly SymbolDisplayFormat FullyQualifiedFormat =
             SymbolDisplayFormat.FullyQualifiedFormat;

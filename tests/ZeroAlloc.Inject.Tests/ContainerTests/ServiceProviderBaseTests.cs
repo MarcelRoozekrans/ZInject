@@ -17,16 +17,16 @@ public class ServiceProviderBaseTests
 
     private sealed class FallbackOnlyService : IFallbackOnly { }
 
-    private sealed class TestScope : ZInjectScope
+    private sealed class TestScope : ZeroAllocInjectScope
     {
-        public TestScope(ZInjectServiceProviderBase root, IServiceScope fallbackScope)
+        public TestScope(ZeroAllocInjectServiceProviderBase root, IServiceScope fallbackScope)
             : base(root, fallbackScope) { }
 
         protected override object? ResolveScopedKnown(Type serviceType) => null;
     }
 
 
-    private sealed class TestProvider : ZInjectServiceProviderBase
+    private sealed class TestProvider : ZeroAllocInjectServiceProviderBase
     {
         private TestCache? _singleton;
 
@@ -52,7 +52,7 @@ public class ServiceProviderBaseTests
 
         protected override bool IsKnownKeyedService(Type serviceType, object? serviceKey) => false;
 
-        protected override ZInjectScope CreateScopeCore(IServiceScope fallbackScope)
+        protected override ZeroAllocInjectScope CreateScopeCore(IServiceScope fallbackScope)
             => new TestScope(this, fallbackScope);
     }
 
