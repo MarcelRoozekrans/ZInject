@@ -1881,7 +1881,16 @@ namespace ZInject.Generator
                     sb.AppendLine("            {");
                     sb.AppendLine("                if (_cg_s_" + i + " != null) return _cg_s_" + i + ";");
                     sb.AppendLine("                var _cg_instance_" + i + " = " + BuildClosedGenericNewExpr(cgf) + ";");
-                    sb.AppendLine("                return Interlocked.CompareExchange(ref _cg_s_" + i + ", _cg_instance_" + i + ", null) ?? _cg_s_" + i + ";");
+                    if (cgf.ImplementsDisposable)
+                    {
+                        sb.AppendLine("                var _cg_existing_" + i + " = Interlocked.CompareExchange(ref _cg_s_" + i + ", _cg_instance_" + i + ", null);");
+                        sb.AppendLine("                if (_cg_existing_" + i + " != null) { (_cg_instance_" + i + " as global::System.IDisposable)?.Dispose(); return _cg_existing_" + i + "; }");
+                        sb.AppendLine("                return _cg_s_" + i + "!;");
+                    }
+                    else
+                    {
+                        sb.AppendLine("                return Interlocked.CompareExchange(ref _cg_s_" + i + ", _cg_instance_" + i + ", null) ?? _cg_s_" + i + ";");
+                    }
                     sb.AppendLine("            }");
                 }
                 else // Transient
@@ -2060,7 +2069,20 @@ namespace ZInject.Generator
             {
                 sb.AppendLine("            private " + keyedScopedServices[i].FullyQualifiedName + "? _keyedScoped_" + i + ";");
             }
-            if (scopeds.Count > 0 || keyedScopedServices.Count > 0)
+            // Closed generic scoped fields
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                var cgf = closedGenericFactories[i];
+                if (string.Equals(cgf.Lifetime, "Scoped", StringComparison.Ordinal))
+                    sb.AppendLine("            private " + cgf.ImplementationFqn + "? _cg_sc_" + i + ";");
+            }
+            bool hasScopedCgFields = false;
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                if (string.Equals(closedGenericFactories[i].Lifetime, "Scoped", StringComparison.Ordinal))
+                { hasScopedCgFields = true; break; }
+            }
+            if (scopeds.Count > 0 || keyedScopedServices.Count > 0 || hasScopedCgFields)
             {
                 sb.AppendLine();
             }
@@ -2223,7 +2245,21 @@ namespace ZInject.Generator
                 {
                     sb.AppendLine("                    return Root.GetService(serviceType);");
                 }
-                else // Transient or Scoped — both emit fresh instances in scope
+                else if (string.Equals(cgf.Lifetime, "Scoped", StringComparison.Ordinal))
+                {
+                    sb.AppendLine("                {");
+                    if (cgf.ImplementsDisposable)
+                    {
+                        sb.AppendLine("                    if (_cg_sc_" + i + " == null) { _cg_sc_" + i + " = " + BuildClosedGenericNewExpr(cgf) + "; TrackDisposable(_cg_sc_" + i + "); }");
+                    }
+                    else
+                    {
+                        sb.AppendLine("                    if (_cg_sc_" + i + " == null) _cg_sc_" + i + " = " + BuildClosedGenericNewExpr(cgf) + ";");
+                    }
+                    sb.AppendLine("                    return _cg_sc_" + i + ";");
+                    sb.AppendLine("                }");
+                }
+                else // Transient — fresh instance each call
                 {
                     sb.AppendLine("                    return " + BuildClosedGenericNewExpr(cgf) + ";");
                 }
@@ -3103,6 +3139,9 @@ namespace ZInject.Generator
                 var closedImpl = implSymbol.Construct(typeArgSymbols);
                 var closedImplFqn = closedImpl.ToDisplayString(FullyQualifiedFormat);
 
+                bool implementsDisposable = closedImpl.AllInterfaces.Any(static i =>
+                    i.SpecialType == SpecialType.System_IDisposable);
+
                 // Build constructor parameters for the closed implementation (type args substituted by Roslyn)
                 var ctor = closedImpl.InstanceConstructors
                     .Where(static c => c.DeclaredAccessibility == Accessibility.Public)
@@ -3146,7 +3185,8 @@ namespace ZInject.Generator
                     closedFqn,
                     closedImplFqn,
                     og.Lifetime,
-                    ctorParams.ToImmutable()));
+                    ctorParams.ToImmutable(),
+                    implementsDisposable));
             }
 
             return results.ToImmutableArray();
