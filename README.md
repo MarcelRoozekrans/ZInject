@@ -148,6 +148,7 @@ ZInject reports issues at compile time:
 | ZI015 | Error | `[OptionalDependency]` on non-nullable parameter |
 | ZI016 | Error | `[DecoratorOf]` interface not implemented by the class |
 | ZI017 | Error | Two decorators for the same interface share the same `Order` |
+| ZI018 | Warning | Open generic has no detected closed usages — won't resolve from standalone container |
 
 ## Generated Container
 
@@ -201,19 +202,19 @@ The generated container uses a type-switch (`if`/`else if` chain on `typeof(T)`)
 
 ### Current Limitations
 
-- **Open generics** (e.g., `IRepository<>`) delegate to the fallback in hybrid mode; in standalone mode they are resolved via code-generated delegate factories with `MakeGenericType` at runtime (cached after the first call per closed type)
+- **Open generics** (e.g., `IRepository<>`) delegate to the fallback in hybrid mode. In standalone mode, closed types are enumerated at compile time via constructor parameter analysis — services that are never used as a constructor parameter in the assembly won't be resolvable (ZI018 warning).
 
 ## Benchmarks
 
-All benchmarks on .NET 9.0, BenchmarkDotNet v0.15.8, Windows 11, X64 RyuJIT AVX2.
+All benchmarks on .NET 9.0, BenchmarkDotNet v0.15.8, Windows 11 (Intel Core i9-12900HK), X64 RyuJIT AVX2.
 
 ### Startup / Registration
 
 | Method | Mean | Allocated |
 |---|---:|---:|
-| MS DI — `BuildServiceProvider()` | 120 ns | 528 B |
-| ZInject Container — `BuildZInjectServiceProvider()` | 12,525 ns | 9,296 B |
-| Standalone — `new MyAppStandaloneServiceProvider()` | **11 ns** | **32 B** |
+| MS DI — `BuildServiceProvider()` | 139 ns | 528 B |
+| ZInject Container — `BuildZInjectServiceProvider()` | 4,477 ns | 9,368 B |
+| Standalone — `new MyAppStandaloneServiceProvider()` | **5 ns** | **32 B** |
 
 The hybrid container has a one-time build cost (generating internal data structures). The standalone provider has virtually none.
 
@@ -221,17 +222,17 @@ The hybrid container has a one-time build cost (generating internal data structu
 
 | Scenario | MS DI | ZInject Container | Standalone |
 |---|---:|---:|---:|
-| Transient (no deps) | 21 ns | **12 ns** | 10 ns |
-| Transient (1 dep) | 24 ns | 24 ns | **21 ns** |
-| Transient (2 deps) | 48 ns | 61 ns | **45 ns** |
-| Singleton | 17 ns | **9 ns** | 10 ns |
-| Decorated transient | 73 ns / 48 B | **26 ns / 48 B** | 28 ns / 48 B |
-| `IEnumerable<T>` (3 impls) | 116 ns | 123 ns | **121 ns** |
-| Create scope | 64 ns / 128 B | 137 ns / 216 B | **56 ns / 88 B** |
-| Resolve scoped (scope + resolve + dispose) | 11,452 ns / 304 B | 8,647 ns / 120 B | **5,513 ns / 120 B** |
-| Open generic (closed at runtime) | 24 ns / 24 B | *(delegates to MS DI)* | 36 ns / 24 B |
+| Transient (no deps) | 23 ns | **13 ns** | 15 ns |
+| Transient (1 dep) | 20 ns | 28 ns | **27 ns** |
+| Transient (2 deps) | 44 ns | 56 ns | **55 ns** |
+| Singleton | 16 ns | **11 ns** | 12 ns |
+| Decorated transient | 41 ns / 48 B | **18 ns / 48 B** | 17 ns / 48 B |
+| `IEnumerable<T>` (3 impls) | **63 ns** | 70 ns | 89 ns |
+| Create scope | 71 ns / 128 B | 141 ns / 216 B | **56 ns / 88 B** |
+| Resolve scoped (scope + resolve + dispose) | ~26,000 ns / 808 B | ~12,300 ns / 120 B | **~12,000 ns / 120 B** |
+| Open generic (compile-time closed) | 21 ns / 24 B | *(delegates to MS DI)* | **19 ns / 24 B** |
 
-The standalone provider's `CreateScope` is ~2.5× faster and uses ~60% less memory than the hybrid mode because it doesn't allocate a fallback scope wrapper. Decorated transients resolve **~2.8× faster** than MS DI across both generated modes. Scoped resolution (full lifecycle) is **~2× faster** with standalone, using only 120 B vs MS DI's 304 B. Open-generic resolution in standalone uses code-generated delegate factories with `MakeGenericType`; the delegate is compiled and cached on the first call per closed type.
+The standalone provider's `CreateScope` is ~2.5× faster and uses ~60% less memory than the hybrid mode because it doesn't allocate a fallback scope wrapper. Decorated transients resolve **~2.3× faster** than MS DI across both generated modes. Scoped resolution (full lifecycle) uses only 120 B vs MS DI's 808 B — ~7× less memory. Open-generic resolution in standalone hits a direct `typeof(T)` branch — ~2× faster than MS DI with no resolution overhead beyond creating the object itself.
 
 ## Native AOT
 
@@ -241,18 +242,18 @@ Because ZInject generates all service instantiation as plain `new ClassName(...)
 |---|---|
 | `AddXxxServices()` extension method | ✅ Generated registration code is AOT-safe. Runtime resolution uses your MS DI configuration. |
 | Standalone container (closed generics) | ✅ Fully AOT-compatible. Direct `new` calls, `typeof(T)` type switches, `Interlocked.CompareExchange` for singletons — zero reflection. |
-| Standalone container (open generics) | ⚠️ Uses `MakeGenericType` + `Delegate.CreateDelegate` on the first call per closed type. Cached after that. Not strict-AOT. |
+| Standalone container (open generics) | ✅ Compile-time enumerated. Closed types are discovered via constructor parameter analysis at build time. Fully AOT-safe. |
 | Hybrid container (known services) | ✅ AOT-safe for services registered with ZInject. |
 | Hybrid container (unknown services) | ⚠️ Falls back to MS DI, which uses reflection. |
 
-**The common path — standalone container with concrete services — is 100% AOT-compatible.** Open generics are the only exception; they require runtime code generation.
+**The standalone container is 100% AOT-compatible**, including open generics. Closed types are enumerated at compile time via constructor parameter analysis — zero reflection at runtime.
 
 ## How It Compares to Scrutor
 
 | | ZInject | Scrutor |
 |---|---|---|
 | Discovery | Compile-time source gen | Runtime assembly scanning |
-| Reflection | None (open generics excepted) | Yes |
+| Reflection | None | Yes |
 | Native AOT | ✅ Standalone mode | ❌ |
 | Startup cost | Zero | Scales with assembly size |
 | IDE support | Compile errors + warnings | Runtime exceptions |

@@ -837,19 +837,26 @@ public class ContainerGeneratorTests
     }
 
     [Fact]
-    public void IsKnownService_OpenGeneric_EmitsGenericTypeDefinitionCheck()
+    public void IsKnownService_OpenGeneric_EmitsExplicitClosedTypeCheck()
     {
+        // After reflection removal, IsKnownService emits explicit typeof(IRepo<string>) == serviceType
+        // entries for closed types detected via constructor parameter analysis.
         var source = """
             using ZInject;
             public interface IRepo<T> { }
             [Transient]
             public class Repo<T> : IRepo<T> { }
+            [Transient]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
         Assert.Contains("IsKnownService", output);
-        Assert.Contains("serviceType.IsGenericType", output);
-        Assert.Contains("typeof(global::IRepo<>)", output);
+        Assert.Contains("typeof(global::IRepo<string>)", output);
+        Assert.DoesNotContain("GetGenericTypeDefinition", output);
     }
 
     // --- Task 6 (additional): IEnumerable<T> edge cases ---
@@ -1102,42 +1109,59 @@ public class ContainerGeneratorTests
         Assert.True(fooIdx >= 0 && loggingIdx > fooIdx && fooImplIdx > fooIdx);
     }
 
-    // --- Task 6: Standalone container — open generics (code-generated delegate factories) ---
+    // --- Standalone container — open generics (explicit closed-type entries, reflection-free) ---
 
     [Fact]
-    public void Standalone_OpenGeneric_EmitsDelegateCacheAndFactoryMethod()
+    public void Standalone_OpenGeneric_EmitsExplicitClosedTypeEntry()
     {
+        // After reflection removal, standalone containers emit explicit if (serviceType == typeof(IRepo<string>))
+        // entries rather than runtime delegate caches / MethodInfo lookups.
         var source = """
             using ZInject;
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
+            [Scoped]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
-        Assert.Contains("OG_Factory_0", output);
-        Assert.Contains("_og_dc_0", output);
+        Assert.DoesNotContain("OG_Factory_0", output);
+        Assert.DoesNotContain("_og_dc_0", output);
+        Assert.DoesNotContain("MakeGenericType", output);
+        Assert.DoesNotContain("GetMethod(", output);
+        Assert.Contains("typeof(global::IRepo<string>)", output);
         Assert.Contains("typeof(global::IRepo<>)", output);
         Assert.Contains("typeof(global::Repo<>)", output);
     }
 
     [Fact]
-    public void Standalone_OpenGeneric_ResolveKnown_EmitsInlineIfChain()
+    public void Standalone_OpenGeneric_ResolveKnown_EmitsExplicitClosedEntry()
     {
+        // After reflection removal, standalone containers resolve open generics via explicit
+        // typeof(IRepo<string>) == serviceType checks rather than GetGenericTypeDefinition().
         var source = """
             using ZInject;
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
+            [Scoped]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
-        Assert.Contains("serviceType.IsGenericType", output);
-        Assert.Contains("GetGenericTypeDefinition()", output);
-        Assert.Contains("GetOrAddScopedOpenGeneric", output);
+        Assert.DoesNotContain("GetGenericTypeDefinition()", output);
         Assert.DoesNotContain("ResolveOpenGenericRoot", output);
         Assert.DoesNotContain("ResolveOpenGenericScoped", output);
         Assert.DoesNotContain("OpenGenericMap", output);
+        Assert.DoesNotContain("MakeGenericType", output);
+        Assert.Contains("typeof(global::IRepo<string>)", output);
     }
 
     [Fact]
@@ -1164,8 +1188,10 @@ public class ContainerGeneratorTests
     }
 
     [Fact]
-    public void Standalone_OpenGeneric_WithDecorator_EmitsDecoratedFactoryMethod()
+    public void Standalone_OpenGeneric_WithDecorator_EmitsExplicitClosedEntryWithoutReflection()
     {
+        // After reflection removal, standalone containers use explicit closed-type entries.
+        // No OG_Factory or _og_dc machinery is emitted.
         var source = """
             using ZInject;
             public interface IRepo<T> { }
@@ -1176,12 +1202,22 @@ public class ContainerGeneratorTests
             {
                 public LoggingRepo(IRepo<T> inner) { }
             }
+            [Scoped]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (output, _) = GeneratorTestHelper.RunGeneratorWithContainer(source);
-        Assert.Contains("OG_Factory_0", output);
-        Assert.Contains("new global::LoggingRepo<T>", output);
-        Assert.Contains("new global::Repo<T>()", output);
+        Assert.DoesNotContain("OG_Factory_0", output);
+        Assert.DoesNotContain("_og_dc_0", output);
+        Assert.DoesNotContain("MakeGenericType", output);
+        Assert.DoesNotContain("GetMethod(", output);
+        Assert.Contains("typeof(global::IRepo<string>)", output);
+        // Decorator must be applied in the standalone container
+        Assert.Contains("new global::LoggingRepo<string>(", output);
+        Assert.Contains("new global::Repo<string>(", output);
     }
 
     [Fact]

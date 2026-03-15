@@ -1127,6 +1127,11 @@ public class IntegrationTests
             public interface IRepo<T> { }
             [Transient]
             public class Repo<T> : IRepo<T> { }
+            [Transient]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
@@ -1152,6 +1157,11 @@ public class IntegrationTests
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
+            [Scoped]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
@@ -1190,6 +1200,11 @@ public class IntegrationTests
             public interface IRepo<T> { }
             [Singleton]
             public class Repo<T> : IRepo<T> { }
+            [Singleton]
+            public class Consumer
+            {
+                public Consumer(IRepo<int> repo) { }
+            }
             """;
 
         var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
@@ -1230,6 +1245,124 @@ public class IntegrationTests
         // IList<T> is not registered — should return null
         var result = provider.GetService(typeof(System.Collections.Generic.IList<string>));
         Assert.Null(result);
+    }
+
+    // ---------------------------------------------------------------
+    // Open generic chained dependency (fixed-point AOT discovery)
+    // ---------------------------------------------------------------
+    [Fact]
+    public void OpenGeneric_ChainedDependency_Standalone_ResolvesCorrectly()
+    {
+        const string source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IRepository<T> { string Name { get; } }
+            public interface IContext<T> { string Tag { get; } }
+            [Transient]
+            public class Repository<T> : IRepository<T>
+            {
+                private readonly IContext<T> _ctx;
+                public Repository(IContext<T> ctx) { _ctx = ctx; }
+                public string Name => "repo:" + _ctx.Tag;
+            }
+            [Transient]
+            public class Context<T> : IContext<T>
+            {
+                public string Tag => typeof(T).Name;
+            }
+            [Transient]
+            public class OrderService
+            {
+                public IRepository<Order> Repo { get; }
+                public OrderService(IRepository<Order> repo) { Repo = repo; }
+            }
+            public class Order { }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var svcType = assembly.GetType("TestApp.OrderService")!;
+        var svc = provider.GetService(svcType)!;
+        var repoProp = svcType.GetProperty("Repo")!;
+        var repo = repoProp.GetValue(svc)!;
+        var nameProp = repo.GetType().GetProperty("Name")!;
+        Assert.Equal("repo:Order", (string)nameProp.GetValue(repo)!);
+    }
+
+    // ---------------------------------------------------------------
+    // Open generic narrowing (As = typeof(IReadRepo<>))
+    // ---------------------------------------------------------------
+    [Fact]
+    public void OpenGeneric_Narrowed_Standalone_ResolvesNarrowedInterface_NotOther()
+    {
+        const string source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IReadRepo<T> { string Read(); }
+            public interface IWriteRepo<T> { }
+            [Transient(As = typeof(IReadRepo<>))]
+            public class Repo<T> : IReadRepo<T>, IWriteRepo<T>
+            {
+                public string Read() => typeof(T).Name;
+            }
+            [Transient]
+            public class Consumer
+            {
+                public IReadRepo<string> Repo { get; }
+                public Consumer(IReadRepo<string> repo) { Repo = repo; }
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var consumerType = assembly.GetType("TestApp.Consumer")!;
+        var consumer = provider.GetService(consumerType)!;
+        var repoProp = consumerType.GetProperty("Repo")!;
+        var repo = repoProp.GetValue(consumer)!;
+        var readMethod = repo.GetType().GetMethod("Read")!;
+        Assert.Equal("String", (string)readMethod.Invoke(repo, null)!);
+
+        // IWriteRepo<string> should not be registered (narrowed away)
+        var writeRepoType = assembly.GetType("TestApp.IWriteRepo`1")!
+            .MakeGenericType(typeof(string));
+        Assert.Null(provider.GetService(writeRepoType));
+    }
+
+    // ---------------------------------------------------------------
+    // Open generic + decorator via standalone container
+    // ---------------------------------------------------------------
+    [Fact]
+    public void OpenGeneric_WithDecorator_Standalone_WrapsInnerWithDecorator()
+    {
+        const string source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IRepo<T> { string Tag { get; } }
+            [Transient]
+            public class Repo<T> : IRepo<T>
+            {
+                public string Tag => "impl:" + typeof(T).Name;
+            }
+            [Decorator]
+            public class LoggingRepo<T> : IRepo<T>
+            {
+                private readonly IRepo<T> _inner;
+                public LoggingRepo(IRepo<T> inner) { _inner = inner; }
+                public string Tag => "logging:" + _inner.Tag;
+            }
+            [Transient]
+            public class Consumer
+            {
+                public IRepo<string> Repo { get; }
+                public Consumer(IRepo<string> repo) { Repo = repo; }
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
+        var consumerType = assembly.GetType("TestApp.Consumer")!;
+        var consumer = provider.GetService(consumerType)!;
+        var repoProp = consumerType.GetProperty("Repo")!;
+        var repo = repoProp.GetValue(consumer)!;
+        var tagProp = repo.GetType().GetProperty("Tag")!;
+        Assert.Equal("logging:impl:String", (string)tagProp.GetValue(repo)!);
     }
 
     // ---------------------------------------------------------------

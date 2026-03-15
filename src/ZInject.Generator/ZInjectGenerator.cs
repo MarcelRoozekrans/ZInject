@@ -113,23 +113,31 @@ namespace ZInject.Generator
                     return builder.ToImmutable();
                 });
 
+            var closedGenericUsages = transients
+                .Combine(scopeds)
+                .Combine(singletons)
+                .Combine(context.CompilationProvider)
+                .Select(static (data, ct) => FindClosedGenericUsages(data, ct));
+
             var combined = transients
                 .Combine(scopeds)
                 .Combine(singletons)
                 .Combine(assemblyAttr)
                 .Combine(assemblyName)
                 .Combine(hasContainer)
-                .Combine(allDecorators);
+                .Combine(allDecorators)
+                .Combine(closedGenericUsages);
 
             context.RegisterSourceOutput(combined, static (spc, data) =>
             {
-                var transientInfos = data.Left.Left.Left.Left.Left.Left;
-                var scopedInfos    = data.Left.Left.Left.Left.Left.Right;
-                var singletonInfos = data.Left.Left.Left.Left.Right;
-                var methodNameOverrides = data.Left.Left.Left.Right;
-                var asmName        = data.Left.Left.Right;
-                var containerReferenced = data.Left.Right;
-                var decoratorInfos = data.Right;
+                var closedGenericFactories = data.Right;  // NEW
+                var transientInfos = data.Left.Left.Left.Left.Left.Left.Left;
+                var scopedInfos    = data.Left.Left.Left.Left.Left.Left.Right;
+                var singletonInfos = data.Left.Left.Left.Left.Left.Right;
+                var methodNameOverrides = data.Left.Left.Left.Left.Right;
+                var asmName        = data.Left.Left.Left.Right;
+                var containerReferenced = data.Left.Left.Right;
+                var decoratorInfos = data.Left.Right;
 
                 var allServices = new List<ServiceRegistrationInfo>();
                 AddNonNull(allServices, transientInfos);
@@ -271,6 +279,49 @@ namespace ZInject.Generator
 
                 DetectCircularDependencies(spc, allServices, decoratorsByInterface);
 
+                // ZI018: warn when an open generic has no detected closed usages
+                {
+                    var closedFqnSet = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                    foreach (var cgf in closedGenericFactories)
+                        closedFqnSet.Add(cgf.InterfaceFqn);
+
+                    foreach (var svc in allServices)
+                    {
+                        if (!svc.IsOpenGeneric) continue;
+
+                        var ifaces = svc.AsType != null
+                            ? new System.Collections.Generic.List<string> { svc.AsType }
+                            : svc.Interfaces;
+
+                        bool anyUsage = false;
+                        foreach (var iface in ifaces)
+                        {
+                            var prefix = iface.IndexOf('<') >= 0
+                                ? iface.Substring(0, iface.IndexOf('<'))
+                                : iface;
+                            foreach (var fqn in closedFqnSet)
+                            {
+                                if (fqn.Length > prefix.Length
+                                    && fqn.StartsWith(prefix, StringComparison.Ordinal)
+                                    && fqn[prefix.Length] == '<')
+                                {
+                                    anyUsage = true;
+                                    break;
+                                }
+                            }
+                            if (anyUsage) break;
+                        }
+
+                        if (!anyUsage)
+                        {
+                            spc.ReportDiagnostic(Diagnostic.Create(
+                                DiagnosticDescriptors.NoDetectedClosedUsages,
+                                Location.None,
+                                svc.TypeName));
+                        }
+                    }
+                }
+
                 if (allServices.Count == 0)
                 {
                     return;
@@ -290,7 +341,7 @@ namespace ZInject.Generator
                     var providerSource = GenerateServiceProviderClass(allServices, asmName, decoratorsByInterface);
                     spc.AddSource("ZInject.ServiceProvider.g.cs", providerSource);
 
-                    var standaloneCode = GenerateStandaloneServiceProviderClass(allServices, asmName, decoratorsByInterface);
+                    var standaloneCode = GenerateStandaloneServiceProviderClass(allServices, asmName, decoratorsByInterface, closedGenericFactories);
                     spc.AddSource(asmName + ".StandaloneServiceProvider.g.cs", standaloneCode);
                 }
             });
@@ -514,10 +565,35 @@ namespace ZInject.Generator
                         optionalNonNullableParamType = paramTypeFqn;
                     }
 
+                    string? unboundFqn = null;
+                    ImmutableArray<string> typeArgMetadataNames = ImmutableArray<string>.Empty;
+                    if (param.Type is INamedTypeSymbol namedParam
+                        && namedParam.IsGenericType
+                        && !namedParam.IsUnboundGenericType)
+                    {
+                        // Use ToUnboundGenericString so the format matches ServiceRegistrationInfo.Interfaces,
+                        // which also stores open-generic interfaces in the "global::Ns.IFoo<,>" form (via
+                        // ToUnboundGenericString at line ~421). Both sides must agree on the same format so
+                        // that FindClosedGenericUsages can look up svc.Interfaces by UnboundGenericInterfaceFqn.
+                        var rawFqn = namedParam.ConstructedFrom.ToDisplayString(FullyQualifiedFormat);
+                        unboundFqn = ToUnboundGenericString(rawFqn, namedParam.TypeArguments.Length);
+                        var taBuilder = ImmutableArray.CreateBuilder<string>(namedParam.TypeArguments.Length);
+                        foreach (var typeArg in namedParam.TypeArguments)
+                        {
+                            var typeArgNs = typeArg.ContainingNamespace is { IsGlobalNamespace: false } nns
+                                ? nns.ToDisplayString()
+                                : null;
+                            taBuilder.Add(typeArgNs != null ? typeArgNs + "." + typeArg.MetadataName : typeArg.MetadataName);
+                        }
+                        typeArgMetadataNames = taBuilder.ToImmutable();
+                    }
+
                     constructorParameters.Add(new ConstructorParameterInfo(
                         paramTypeFqn,
                         param.Name,
-                        isOptional));
+                        isOptional,
+                        unboundFqn,
+                        typeArgMetadataNames));
 
                     // Check for primitive/value types
                     if (primitiveParameterName == null)
@@ -533,6 +609,17 @@ namespace ZInject.Generator
                         }
                     }
                 }
+            }
+
+            string? implementationMetadataName = null;
+            if (isOpenGeneric)
+            {
+                var implNs = typeSymbol.ContainingNamespace is { IsGlobalNamespace: false } ns2
+                    ? ns2.ToDisplayString()
+                    : null;
+                implementationMetadataName = implNs != null
+                    ? implNs + "." + typeSymbol.MetadataName
+                    : typeSymbol.MetadataName;
             }
 
             return new ServiceRegistrationInfo(
@@ -553,7 +640,8 @@ namespace ZInject.Generator
                 primitiveParameterType,
                 optionalNonNullableParamName,
                 optionalNonNullableParamType,
-                implementsDisposable);
+                implementsDisposable,
+                implementationMetadataName);
         }
 
         private static string GenerateExtensionClass(
@@ -1142,7 +1230,7 @@ namespace ZInject.Generator
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            EmitIsKnownService(sb, serviceTypeGroups, new List<ServiceRegistrationInfo>(), hasKeyedServices);
+            EmitIsKnownService(sb, serviceTypeGroups, hasKeyedServices);
             sb.AppendLine();
 
             EmitIsKnownKeyedService(sb, keyedServices);
@@ -1518,7 +1606,8 @@ namespace ZInject.Generator
         private static string GenerateStandaloneServiceProviderClass(
             List<ServiceRegistrationInfo> services,
             string assemblyName,
-            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface,
+            ImmutableArray<ClosedGenericFactoryInfo> closedGenericFactories)
         {
             // Clean assembly name for class naming
             var cleanName = new StringBuilder();
@@ -1554,6 +1643,11 @@ namespace ZInject.Generator
                 else if (svc.Lifetime == "Singleton") singletons.Add(svc);
                 else if (svc.Lifetime == "Scoped") scopeds.Add(svc);
             }
+
+            // All open generics are handled by explicit closed-type entries (FindClosedGenericUsages).
+            // The runtime reflection machinery has been removed; open generics with no detected
+            // closed usages will produce ZI018 (Task 6). The openGenerics list is kept for
+            // diagnostic purposes only.
 
             // Group non-keyed services by service type for IEnumerable<T> support.
             var serviceTypeGroups = new Dictionary<string, List<ServiceTypeGroupEntry>>();
@@ -1637,7 +1731,14 @@ namespace ZInject.Generator
             {
                 sb.AppendLine("        private " + keyedSingletons[i].FullyQualifiedName + "? _keyedSingleton_" + i + ";");
             }
-            if (singletons.Count > 0 || keyedSingletons.Count > 0)
+            // Closed generic singleton fields
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                var cgf = closedGenericFactories[i];
+                if (string.Equals(cgf.Lifetime, "Singleton", StringComparison.Ordinal))
+                    sb.AppendLine("        private " + cgf.ImplementationFqn + "? _cg_s_" + i + ";");
+            }
+            if (singletons.Count > 0 || keyedSingletons.Count > 0 || closedGenericFactories.Length > 0)
             {
                 sb.AppendLine();
             }
@@ -1645,54 +1746,6 @@ namespace ZInject.Generator
             // Constructor - parameterless
             sb.AppendLine("        public " + className + "() { }");
             sb.AppendLine();
-
-            // Open generic: static MethodInfo refs + delegate caches + singleton caches + factory methods
-            if (openGenerics.Count > 0)
-            {
-                sb.AppendLine("        // Open generic factory infra (code-generated delegate caches)");
-                const string delegateType = "global::System.Func<global::System.IServiceProvider, object>";
-                const string dictType = "global::System.Collections.Concurrent.ConcurrentDictionary<global::System.Type, " + delegateType + ">";
-                const string singletonDictType = "global::System.Collections.Concurrent.ConcurrentDictionary<global::System.Type, object>";
-                for (int ogIdx = 0; ogIdx < openGenerics.Count; ogIdx++)
-                {
-                    if (openGenerics[ogIdx].Key != null) continue;
-                    sb.AppendLine("        private static readonly global::System.Reflection.MethodInfo _og_mi_" + ogIdx + " =");
-                    sb.AppendLine("            typeof(" + className + ").GetMethod(\"OG_Factory_" + ogIdx + "\", global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static)!;");
-                    sb.AppendLine("        private static readonly " + dictType + " _og_dc_" + ogIdx + " = new();");
-                    if (string.Equals(openGenerics[ogIdx].Lifetime, "Singleton", StringComparison.Ordinal))
-                        sb.AppendLine("        private static readonly " + singletonDictType + " _og_sc_" + ogIdx + " = new();");
-                }
-                sb.AppendLine();
-                for (int ogIdx = 0; ogIdx < openGenerics.Count; ogIdx++)
-                {
-                    var svc = openGenerics[ogIdx];
-                    if (svc.Key != null) continue;
-                    int arity = int.Parse(svc.OpenGenericArity!);
-                    var typeParams = BuildOpenGenericTypeParams(arity);
-                    var ifaces = svc.AsType != null ? new List<string> { svc.AsType } : svc.Interfaces;
-                    List<DecoratorRegistrationInfo>? decoratorList = null;
-                    foreach (var iface in ifaces)
-                    {
-                        if (decoratorsByInterface.TryGetValue(iface, out var decList))
-                        {
-                            // Filter to only open generic decorators
-                            var ogDecs = new List<DecoratorRegistrationInfo>();
-                            foreach (var d in decList)
-                            {
-                                if (d.IsOpenGeneric)
-                                    ogDecs.Add(d);
-                            }
-                            if (ogDecs.Count > 0)
-                            {
-                                decoratorList = ogDecs;
-                                break;
-                            }
-                        }
-                    }
-                    EmitOpenGenericFactoryMethod(sb, "OG_Factory_" + ogIdx, typeParams, svc, decoratorList, arity);
-                }
-                sb.AppendLine();
-            }
 
             // ResolveKnown - root provider: transients + singletons (scoped returns null)
             sb.AppendLine("        protected override object? ResolveKnown(Type serviceType)");
@@ -1794,13 +1847,40 @@ namespace ZInject.Generator
                 sb.AppendLine("            }");
             }
 
-            if (openGenerics.Count > 0)
-                EmitOpenGenericRootResolve(sb, openGenerics, "            ", className);
+            // Explicit closed generic entries (Transient + Singleton; Scoped handled in ResolveScopedKnown)
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                var cgf = closedGenericFactories[i];
+                if (string.Equals(cgf.Lifetime, "Scoped", StringComparison.Ordinal)) continue;
+                sb.AppendLine("            if (serviceType == typeof(" + cgf.InterfaceFqn + "))");
+                if (string.Equals(cgf.Lifetime, "Singleton", StringComparison.Ordinal))
+                {
+                    sb.AppendLine("            {");
+                    sb.AppendLine("                if (_cg_s_" + i + " != null) return _cg_s_" + i + ";");
+                    sb.AppendLine("                var _cg_instance_" + i + " = " + BuildDecoratedClosedGenericExpr(cgf, decoratorsByInterface) + ";");
+                    if (cgf.ImplementsDisposable)
+                    {
+                        sb.AppendLine("                var _cg_existing_" + i + " = Interlocked.CompareExchange(ref _cg_s_" + i + ", _cg_instance_" + i + ", null);");
+                        sb.AppendLine("                if (_cg_existing_" + i + " != null) { (_cg_instance_" + i + " as global::System.IDisposable)?.Dispose(); return _cg_existing_" + i + "; }");
+                        sb.AppendLine("                return _cg_s_" + i + "!;");
+                    }
+                    else
+                    {
+                        sb.AppendLine("                return Interlocked.CompareExchange(ref _cg_s_" + i + ", _cg_instance_" + i + ", null) ?? _cg_s_" + i + ";");
+                    }
+                    sb.AppendLine("            }");
+                }
+                else // Transient
+                {
+                    sb.AppendLine("                return " + BuildDecoratedClosedGenericExpr(cgf, decoratorsByInterface) + ";");
+                }
+            }
+
             sb.AppendLine("            return null;");
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            EmitIsKnownService(sb, serviceTypeGroups, openGenerics, hasKeyedServices);
+            EmitIsKnownService(sb, serviceTypeGroups, hasKeyedServices);
             sb.AppendLine();
 
             EmitIsKnownKeyedService(sb, keyedServices);
@@ -1889,7 +1969,8 @@ namespace ZInject.Generator
                     disposableKeyedSingletonIndices.Add(i);
             }
 
-            if (disposableSingletonIndices.Count > 0 || disposableKeyedSingletonIndices.Count > 0)
+            if (disposableSingletonIndices.Count > 0 || disposableKeyedSingletonIndices.Count > 0
+                || closedGenericFactories.Any(static cgf => cgf.ImplementsDisposable && cgf.Lifetime == "Singleton"))
             {
                 // Dispose(bool) override
                 sb.AppendLine("        protected override void Dispose(bool disposing)");
@@ -1908,6 +1989,13 @@ namespace ZInject.Generator
                     var fieldName = "_keyedSingleton_" + idx;
                     sb.AppendLine("                var __ks" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
                     sb.AppendLine("                (__ks" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                for (int cgIdx = 0; cgIdx < closedGenericFactories.Length; cgIdx++)
+                {
+                    var cgf = closedGenericFactories[cgIdx];
+                    if (!cgf.ImplementsDisposable || cgf.Lifetime != "Singleton") continue;
+                    sb.AppendLine("                var __cg_s_" + cgIdx + " = global::System.Threading.Interlocked.Exchange(ref _cg_s_" + cgIdx + ", null);");
+                    sb.AppendLine("                (__cg_s_" + cgIdx + " as global::System.IDisposable)?.Dispose();");
                 }
                 sb.AppendLine("            }");
                 sb.AppendLine("        }");
@@ -1929,6 +2017,15 @@ namespace ZInject.Generator
                     sb.AppendLine("            var __ks" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
                     sb.AppendLine("            if (__ks" + idx + " is System.IAsyncDisposable __kad" + idx + ") await __kad" + idx + ".DisposeAsync().ConfigureAwait(false);");
                     sb.AppendLine("            else (__ks" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                for (int cgIdx = 0; cgIdx < closedGenericFactories.Length; cgIdx++)
+                {
+                    var cgf = closedGenericFactories[cgIdx];
+                    if (!cgf.ImplementsDisposable || cgf.Lifetime != "Singleton") continue;
+                    sb.AppendLine("            var __cg_sa_" + cgIdx + " = global::System.Threading.Interlocked.Exchange(ref _cg_s_" + cgIdx + ", null);");
+                    sb.AppendLine("            if (__cg_sa_" + cgIdx + " is global::System.IAsyncDisposable __cg_sad_" + cgIdx + ")");
+                    sb.AppendLine("                await __cg_sad_" + cgIdx + ".DisposeAsync().ConfigureAwait(false);");
+                    sb.AppendLine("            else (__cg_sa_" + cgIdx + " as global::System.IDisposable)?.Dispose();");
                 }
                 sb.AppendLine("            await base.DisposeAsync().ConfigureAwait(false);");
                 sb.AppendLine("        }");
@@ -1964,7 +2061,20 @@ namespace ZInject.Generator
             {
                 sb.AppendLine("            private " + keyedScopedServices[i].FullyQualifiedName + "? _keyedScoped_" + i + ";");
             }
-            if (scopeds.Count > 0 || keyedScopedServices.Count > 0)
+            // Closed generic scoped fields
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                var cgf = closedGenericFactories[i];
+                if (string.Equals(cgf.Lifetime, "Scoped", StringComparison.Ordinal))
+                    sb.AppendLine("            private " + cgf.ImplementationFqn + "? _cg_sc_" + i + ";");
+            }
+            bool hasScopedCgFields = false;
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                if (string.Equals(closedGenericFactories[i].Lifetime, "Scoped", StringComparison.Ordinal))
+                { hasScopedCgFields = true; break; }
+            }
+            if (scopeds.Count > 0 || keyedScopedServices.Count > 0 || hasScopedCgFields)
             {
                 sb.AppendLine();
             }
@@ -2118,8 +2228,35 @@ namespace ZInject.Generator
                 sb.AppendLine("                }");
             }
 
-            if (openGenerics.Count > 0)
-                EmitOpenGenericScopeResolve(sb, openGenerics, "                ", className);
+            // Explicit closed generic entries in scope (all lifetimes)
+            for (int i = 0; i < closedGenericFactories.Length; i++)
+            {
+                var cgf = closedGenericFactories[i];
+                sb.AppendLine("                if (serviceType == typeof(" + cgf.InterfaceFqn + "))");
+                if (string.Equals(cgf.Lifetime, "Singleton", StringComparison.Ordinal))
+                {
+                    sb.AppendLine("                    return Root.GetService(serviceType);");
+                }
+                else if (string.Equals(cgf.Lifetime, "Scoped", StringComparison.Ordinal))
+                {
+                    sb.AppendLine("                {");
+                    if (cgf.ImplementsDisposable)
+                    {
+                        sb.AppendLine("                    if (_cg_sc_" + i + " == null) { _cg_sc_" + i + " = " + BuildDecoratedClosedGenericExpr(cgf, decoratorsByInterface) + "; TrackDisposable(_cg_sc_" + i + "); }");
+                    }
+                    else
+                    {
+                        sb.AppendLine("                    if (_cg_sc_" + i + " == null) _cg_sc_" + i + " = " + BuildDecoratedClosedGenericExpr(cgf, decoratorsByInterface) + ";");
+                    }
+                    sb.AppendLine("                    return _cg_sc_" + i + ";");
+                    sb.AppendLine("                }");
+                }
+                else // Transient — fresh instance each call
+                {
+                    sb.AppendLine("                    return " + BuildDecoratedClosedGenericExpr(cgf, decoratorsByInterface) + ";");
+                }
+            }
+
             sb.AppendLine("                return null;");
             sb.AppendLine("            }");
 
@@ -2209,7 +2346,6 @@ namespace ZInject.Generator
         private static void EmitIsKnownService(
             StringBuilder sb,
             Dictionary<string, List<ServiceTypeGroupEntry>> serviceTypeGroups,
-            List<ServiceRegistrationInfo> openGenerics,
             bool hasKeyedServices)
         {
             sb.AppendLine("        protected override bool IsKnownService(global::System.Type serviceType)");
@@ -2221,26 +2357,10 @@ namespace ZInject.Generator
                 sb.AppendLine("            if (serviceType == typeof(global::Microsoft.Extensions.DependencyInjection.IServiceProviderIsKeyedService)) return true;");
             }
 
-            // Closed types
+            // Closed types (includes explicit closed generic entries from FindClosedGenericUsages)
             foreach (var kvp in serviceTypeGroups)
             {
                 sb.AppendLine("            if (serviceType == typeof(" + kvp.Key + ")) return true;");
-            }
-
-            // Open generics
-            if (openGenerics.Count > 0)
-            {
-                sb.AppendLine("            if (serviceType.IsGenericType)");
-                sb.AppendLine("            {");
-                sb.AppendLine("                var _genDef = serviceType.GetGenericTypeDefinition();");
-                foreach (var svc in openGenerics)
-                {
-                    foreach (var st in GetServiceTypes(svc))
-                    {
-                        sb.AppendLine("                if (_genDef == typeof(" + st + ")) return true;");
-                    }
-                }
-                sb.AppendLine("            }");
             }
 
             sb.AppendLine("            return false;");
@@ -2473,238 +2593,131 @@ namespace ZInject.Generator
             return argSb.ToString();
         }
 
-        // ---- Open generic factory code-gen helpers ----
+        // ---- Closed generic factory code-gen helpers ----
 
-        /// <summary>Returns the generic type-parameter list for a factory method, e.g. "&lt;T&gt;" (arity 1) or "&lt;T1, T2&gt;" (arity 2).</summary>
-        private static string BuildOpenGenericTypeParams(int arity)
+        /// <summary>Builds a "new ClosedImpl(args...)" expression for an explicit closed-generic entry.</summary>
+        private static string BuildClosedGenericNewExpr(ClosedGenericFactoryInfo cgf)
         {
-            if (arity == 1) return "<T>";
-            var names = new System.Text.StringBuilder("<");
-            for (int i = 1; i <= arity; i++)
+            var sb = new System.Text.StringBuilder();
+            sb.Append("new ").Append(cgf.ImplementationFqn).Append("(");
+            for (int i = 0; i < cgf.Parameters.Length; i++)
             {
-                if (i > 1) names.Append(", ");
-                names.Append('T').Append(i);
+                if (i > 0) sb.Append(", ");
+                var p = cgf.Parameters[i];
+                if (p.IsOptional)
+                {
+                    sb.Append("(").Append(p.FullyQualifiedTypeName).Append("?)GetService(typeof(")
+                      .Append(p.FullyQualifiedTypeName).Append("))");
+                }
+                else
+                {
+                    sb.Append("(").Append(p.FullyQualifiedTypeName).Append(")GetService(typeof(")
+                      .Append(p.FullyQualifiedTypeName).Append("))!");
+                }
             }
-            names.Append('>');
-            return names.ToString();
-        }
-
-        /// <summary>Closes an unbound generic FQN with method type params, e.g. "global::IFoo&lt;&gt;" → "global::IFoo&lt;T&gt;".</summary>
-        private static string CloseGenericFqn(string fqn, int arity)
-        {
-            var idx = fqn.IndexOf('<');
-            if (idx < 0) return fqn;
-            var prefix = fqn.Substring(0, idx);
-            if (arity == 1) return prefix + "<T>";
-            var args = new System.Text.StringBuilder();
-            for (int i = 1; i <= arity; i++)
-            {
-                if (i > 1) args.Append(", ");
-                args.Append('T').Append(i);
-            }
-            return prefix + "<" + args.ToString() + ">";
+            sb.Append(")");
+            return sb.ToString();
         }
 
         /// <summary>
-        /// Emits the OG_Factory method body. Uses expression body for simple cases,
-        /// block body when a decorator must be created from an intermediate variable.
+        /// Builds the instantiation expression for a closed generic factory, wrapping with decorator chain
+        /// if an open-generic decorator is registered for the interface's unbound form.
         /// </summary>
-        private static void EmitOpenGenericFactoryMethod(
-            StringBuilder sb,
-            string methodName,
-            string typeParams,
-            ServiceRegistrationInfo svc,
-            List<DecoratorRegistrationInfo>? decorators,
-            int arity)
+        private static string BuildDecoratedClosedGenericExpr(
+            ClosedGenericFactoryInfo cgf,
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<DecoratorRegistrationInfo>> decoratorsByInterface)
         {
-            var closedImpl = CloseGenericFqn(svc.FullyQualifiedName, arity);
-            var innerExpr = BuildOpenGenericNewExpr(closedImpl, svc.ConstructorParameters, null, null, arity);
+            var innerExpr = BuildClosedGenericNewExpr(cgf);
 
-            if (decorators == null || decorators.Count == 0)
+            // Derive unbound FQN (e.g. "global::IRepo<>" from "global::IRepo<string>")
+            var unboundFqn = GetUnboundFqnFromClosed(cgf.InterfaceFqn);
+            if (unboundFqn == null) return innerExpr;
+
+            if (!decoratorsByInterface.TryGetValue(unboundFqn, out var decorators) || decorators.Count == 0)
+                return innerExpr;
+
+            var typeArgs = ExtractTypeArgsFromClosedFqn(cgf.InterfaceFqn);
+            if (typeArgs.Length == 0) return innerExpr;
+
+            // Chain decorators innermost-first (list is already sorted by Order ascending)
+            var currentExpr = innerExpr;
+            var closedInterfaceFqn = cgf.InterfaceFqn;
+            foreach (var decorator in decorators)
             {
-                sb.AppendLine("        private static object " + methodName + typeParams + "(global::System.IServiceProvider sp)");
-                sb.AppendLine("            => " + innerExpr + ";");
-                return;
-            }
-
-            // Decorator case: emit block body chaining all decorators
-            sb.AppendLine("        private static object " + methodName + typeParams + "(global::System.IServiceProvider sp)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var _layer0 = " + innerExpr + ";");
-
-            for (int i = 0; i < decorators.Count; i++)
-            {
-                var dec = decorators[i];
-                var closedDecorator = CloseGenericFqn(dec.DecoratorFqn, arity);
-                var decoratedIface = dec.DecoratedInterfaceFqn;
-                var prevVar = "_layer" + i;
-                var decoratorExpr = BuildOpenGenericNewExpr(closedDecorator, dec.ConstructorParameters, decoratedIface, prevVar, arity);
-
-                if (i < decorators.Count - 1)
+                var closedDecoratorFqn = CloseUnboundFqn(decorator.DecoratorFqn, typeArgs);
+                var sb = new System.Text.StringBuilder();
+                sb.Append("new ").Append(closedDecoratorFqn).Append("(");
+                bool first = true;
+                foreach (var param in decorator.ConstructorParameters)
                 {
-                    var nextVar = "_layer" + (i + 1);
-                    sb.AppendLine("            var " + nextVar + " = " + decoratorExpr + ";");
-                }
-                else
-                {
-                    sb.AppendLine("            return " + decoratorExpr + ";");
-                }
-            }
-
-            sb.AppendLine("        }");
-        }
-
-        /// <summary>Builds a "new ClosedType(args...)" expression for a generic factory method body.</summary>
-        private static string BuildOpenGenericNewExpr(
-            string closedFqn,
-            List<ConstructorParameterInfo> ctorParams,
-            string? innerParamUnboundType,
-            string? innerExprToInject,
-            int arity)
-        {
-            if (ctorParams.Count == 0)
-                return "new " + closedFqn + "()";
-
-            var sb = new System.Text.StringBuilder("new ").Append(closedFqn).Append('(');
-            for (int i = 0; i < ctorParams.Count; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                var param = ctorParams[i];
-                bool isInner = innerParamUnboundType != null &&
-                               string.Equals(param.FullyQualifiedTypeName, innerParamUnboundType, StringComparison.Ordinal);
-                if (isInner && innerExprToInject != null)
-                {
-                    var closedParamType = CloseGenericFqn(param.FullyQualifiedTypeName, arity);
-                    sb.Append('(').Append(closedParamType).Append(")(").Append(innerExprToInject).Append(')');
-                }
-                else
-                {
-                    bool isUnbound = param.FullyQualifiedTypeName.Contains('<');
-                    if (isUnbound)
+                    if (!first) sb.Append(", ");
+                    first = false;
+                    var closedParamType = CloseUnboundFqn(param.FullyQualifiedTypeName, typeArgs);
+                    // Identify the "inner" parameter by matching the closed or unbound interface FQN
+                    if (closedParamType == closedInterfaceFqn || param.FullyQualifiedTypeName == unboundFqn)
                     {
-                        var closedParamType = CloseGenericFqn(param.FullyQualifiedTypeName, arity);
-                        // Resolve via MakeGenericType at runtime
-                        var typeofArgs = BuildTypeofArgs(arity);
-                        var serviceTypeExpr = "typeof(" + param.FullyQualifiedTypeName + ").MakeGenericType(" + typeofArgs + ")";
-                        if (param.IsOptional)
-                            sb.Append('(').Append(closedParamType).Append("?)sp.GetService(").Append(serviceTypeExpr).Append(')');
-                        else
-                            sb.Append('(').Append(closedParamType).Append(")sp.GetService(").Append(serviceTypeExpr).Append(")!");
+                        sb.Append("(").Append(closedInterfaceFqn).Append(")(").Append(currentExpr).Append(")");
+                    }
+                    else if (param.IsOptional)
+                    {
+                        sb.Append("(").Append(closedParamType).Append("?)GetService(typeof(")
+                          .Append(closedParamType).Append("))");
                     }
                     else
                     {
-                        if (param.IsOptional)
-                            sb.Append('(').Append(param.FullyQualifiedTypeName).Append("?)sp.GetService(typeof(").Append(param.FullyQualifiedTypeName).Append("))");
-                        else
-                            sb.Append('(').Append(param.FullyQualifiedTypeName).Append(")sp.GetService(typeof(").Append(param.FullyQualifiedTypeName).Append("))!");
+                        sb.Append("(").Append(closedParamType).Append(")GetService(typeof(")
+                          .Append(closedParamType).Append("))!");
                     }
                 }
+                sb.Append(")");
+                currentExpr = sb.ToString();
             }
-            sb.Append(')');
-            return sb.ToString();
+            return currentExpr;
         }
 
-        private static string BuildTypeofArgs(int arity)
+        /// <summary>Returns the unbound generic FQN from a closed generic FQN, e.g. "global::IFoo&lt;global::Bar&gt;" → "global::IFoo&lt;&gt;".</summary>
+        private static string? GetUnboundFqnFromClosed(string closedFqn)
         {
-            if (arity == 1) return "typeof(T)";
-            var sb = new System.Text.StringBuilder();
-            for (int i = 1; i <= arity; i++)
-            {
-                if (i > 1) sb.Append(", ");
-                sb.Append("typeof(T").Append(i).Append(')');
-            }
-            return sb.ToString();
+            var idx = closedFqn.IndexOf('<');
+            if (idx < 0) return null;
+            var prefix = closedFqn.Substring(0, idx);
+            var typeArgs = ExtractTypeArgsFromClosedFqn(closedFqn);
+            if (typeArgs.Length == 0) return null;
+            var commas = typeArgs.Length > 1 ? new string(',', typeArgs.Length - 1) : "";
+            return prefix + "<" + commas + ">";
         }
 
-        private const string OgDelegateCreator =
-            "static (t, mi) => (global::System.Func<global::System.IServiceProvider, object>)" +
-            "global::System.Delegate.CreateDelegate(" +
-            "typeof(global::System.Func<global::System.IServiceProvider, object>), " +
-            "mi.MakeGenericMethod(t.GetGenericArguments()))";
-
-        /// <summary>Emits the open-generic if-chain into ResolveKnown (root provider).</summary>
-        private static void EmitOpenGenericRootResolve(
-            StringBuilder sb,
-            List<ServiceRegistrationInfo> openGenerics,
-            string indent,
-            string className)
+        /// <summary>Closes an unbound generic FQN with the supplied type args, e.g. "global::IFoo&lt;&gt;" + ["global::Bar"] → "global::IFoo&lt;global::Bar&gt;".</summary>
+        private static string CloseUnboundFqn(string unboundFqn, string[] typeArgs)
         {
-            sb.AppendLine(indent + "if (serviceType.IsGenericType)");
-            sb.AppendLine(indent + "{");
-            sb.AppendLine(indent + "    var _genDef = serviceType.GetGenericTypeDefinition();");
-            for (int ogIdx = 0; ogIdx < openGenerics.Count; ogIdx++)
+            var idx = unboundFqn.IndexOf('<');
+            if (idx < 0) return unboundFqn; // Not generic — return as-is
+            var prefix = unboundFqn.Substring(0, idx);
+            return prefix + "<" + string.Join(", ", typeArgs) + ">";
+        }
+
+        /// <summary>Extracts the outermost type arguments from a closed generic FQN string.</summary>
+        private static string[] ExtractTypeArgsFromClosedFqn(string closedFqn)
+        {
+            var openIdx = closedFqn.IndexOf('<');
+            if (openIdx < 0) return new string[0];
+            var closeIdx = closedFqn.LastIndexOf('>');
+            if (closeIdx <= openIdx) return new string[0];
+            var inner = closedFqn.Substring(openIdx + 1, closeIdx - openIdx - 1);
+            var result = new System.Collections.Generic.List<string>();
+            int depth = 0, start = 0;
+            for (int i = 0; i < inner.Length; i++)
             {
-                var svc = openGenerics[ogIdx];
-                if (svc.Key != null) continue;
-                int arity = int.Parse(svc.OpenGenericArity!);
-                var ifaces = svc.AsType != null ? new List<string> { svc.AsType } : svc.Interfaces;
-                foreach (var iface in ifaces)
+                if (inner[i] == '<') depth++;
+                else if (inner[i] == '>') depth--;
+                else if (inner[i] == ',' && depth == 0)
                 {
-                    var openIface = ToUnboundGenericString(iface, arity);
-                    sb.AppendLine(indent + "    if (_genDef == typeof(" + openIface + "))");
-                    sb.AppendLine(indent + "    {");
-                    if (string.Equals(svc.Lifetime, "Scoped", StringComparison.Ordinal))
-                    {
-                        sb.AppendLine(indent + "        return null; // scoped open generics not resolved from root");
-                    }
-                    else if (string.Equals(svc.Lifetime, "Singleton", StringComparison.Ordinal))
-                    {
-                        sb.AppendLine(indent + "        var _d_" + ogIdx + " = _og_dc_" + ogIdx + ".GetOrAdd(serviceType, " + OgDelegateCreator + ", _og_mi_" + ogIdx + ");");
-                        sb.AppendLine(indent + "        return _og_sc_" + ogIdx + ".GetOrAdd(serviceType, (t, state) => state.d(state.sp), (d: _d_" + ogIdx + ", sp: (global::System.IServiceProvider)this));");
-                    }
-                    else // Transient
-                    {
-                        sb.AppendLine(indent + "        var _d_" + ogIdx + " = _og_dc_" + ogIdx + ".GetOrAdd(serviceType, " + OgDelegateCreator + ", _og_mi_" + ogIdx + ");");
-                        sb.AppendLine(indent + "        return _d_" + ogIdx + "(this);");
-                    }
-                    sb.AppendLine(indent + "    }");
+                    result.Add(inner.Substring(start, i - start).Trim());
+                    start = i + 1;
                 }
             }
-            sb.AppendLine(indent + "}");
-        }
-
-        /// <summary>Emits the open-generic if-chain into ResolveScopedKnown (scope).</summary>
-        private static void EmitOpenGenericScopeResolve(
-            StringBuilder sb,
-            List<ServiceRegistrationInfo> openGenerics,
-            string indent,
-            string className)
-        {
-            sb.AppendLine(indent + "if (serviceType.IsGenericType)");
-            sb.AppendLine(indent + "{");
-            sb.AppendLine(indent + "    var _genDef = serviceType.GetGenericTypeDefinition();");
-            for (int ogIdx = 0; ogIdx < openGenerics.Count; ogIdx++)
-            {
-                var svc = openGenerics[ogIdx];
-                if (svc.Key != null) continue;
-                int arity = int.Parse(svc.OpenGenericArity!);
-                var ifaces = svc.AsType != null ? new List<string> { svc.AsType } : svc.Interfaces;
-                foreach (var iface in ifaces)
-                {
-                    var openIface = ToUnboundGenericString(iface, arity);
-                    sb.AppendLine(indent + "    if (_genDef == typeof(" + openIface + "))");
-                    sb.AppendLine(indent + "    {");
-                    if (string.Equals(svc.Lifetime, "Singleton", StringComparison.Ordinal))
-                    {
-                        sb.AppendLine(indent + "        return Root.GetService(serviceType);");
-                    }
-                    else if (string.Equals(svc.Lifetime, "Scoped", StringComparison.Ordinal))
-                    {
-                        sb.AppendLine(indent + "        return GetOrAddScopedOpenGeneric(serviceType, () =>");
-                        sb.AppendLine(indent + "        {");
-                        sb.AppendLine(indent + "            var _d_" + ogIdx + " = " + className + "._og_dc_" + ogIdx + ".GetOrAdd(serviceType, " + OgDelegateCreator + ", " + className + "._og_mi_" + ogIdx + ");");
-                        sb.AppendLine(indent + "            return _d_" + ogIdx + "(this);");
-                        sb.AppendLine(indent + "        });");
-                    }
-                    else // Transient
-                    {
-                        sb.AppendLine(indent + "        var _d_" + ogIdx + " = " + className + "._og_dc_" + ogIdx + ".GetOrAdd(serviceType, " + OgDelegateCreator + ", " + className + "._og_mi_" + ogIdx + ");");
-                        sb.AppendLine(indent + "        return _d_" + ogIdx + "(this);");
-                    }
-                    sb.AppendLine(indent + "    }");
-                }
-            }
-            sb.AppendLine(indent + "}");
+            result.Add(inner.Substring(start).Trim());
+            return result.ToArray();
         }
 
         private static void EmitConcreteRegistration(
@@ -2899,6 +2912,124 @@ namespace ZInject.Generator
                 typeName, fqn, decoratedInterfaceFqn, isOpenGeneric, ctorParams,
                 implementsDisposable, isAbstractOrStatic,
                 order: order, whenRegisteredFqn: whenRegisteredFqn, isDecoratorOf: true);
+        }
+
+        private static ImmutableArray<ClosedGenericFactoryInfo> FindClosedGenericUsages(
+            (((ImmutableArray<ServiceRegistrationInfo?> transients,
+               ImmutableArray<ServiceRegistrationInfo?> scopeds),
+              ImmutableArray<ServiceRegistrationInfo?> singletons),
+             Compilation compilation) data,
+            CancellationToken ct)
+        {
+            var transients  = data.Item1.Item1.Item1;
+            var scopeds     = data.Item1.Item1.Item2;
+            var singletons  = data.Item1.Item2;
+            var compilation = data.Item2;
+
+            // Build lookup: unbound interface FQN (global::IFoo<,> form) → open generic ServiceRegistrationInfo
+            var openGenericMap = new Dictionary<string, ServiceRegistrationInfo>(StringComparer.Ordinal);
+            foreach (var svc in transients.Concat(scopeds).Concat(singletons))
+            {
+                if (svc == null || !svc.IsOpenGeneric || svc.ImplementationMetadataName == null) continue;
+                var ifaces = svc.AsType != null ? new List<string> { svc.AsType } : svc.Interfaces;
+                foreach (var iface in ifaces)
+                    if (!openGenericMap.ContainsKey(iface))
+                        openGenericMap[iface] = svc;
+            }
+
+            if (openGenericMap.Count == 0) return ImmutableArray<ClosedGenericFactoryInfo>.Empty;
+
+            // Seed work queue from all constructor parameters of all registered services
+            var workQueue = new Queue<ConstructorParameterInfo>();
+            var processed = new HashSet<string>(StringComparer.Ordinal); // keyed by closed interface FQN
+            var results = new List<ClosedGenericFactoryInfo>();
+
+            foreach (var svc in transients.Concat(scopeds).Concat(singletons))
+            {
+                if (svc == null) continue;
+                foreach (var param in svc.ConstructorParameters)
+                    if (param.UnboundGenericInterfaceFqn != null)
+                        workQueue.Enqueue(param);
+            }
+
+            while (workQueue.Count > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                var param = workQueue.Dequeue();
+                var closedFqn = param.FullyQualifiedTypeName;
+
+                if (!processed.Add(closedFqn)) continue;
+                if (param.UnboundGenericInterfaceFqn == null) continue;
+                if (!openGenericMap.TryGetValue(param.UnboundGenericInterfaceFqn, out var og)) continue;
+
+                // Resolve impl symbol and close it
+                var implSymbol = compilation.GetTypeByMetadataName(og.ImplementationMetadataName!);
+                if (implSymbol == null) continue;
+
+                var typeArgSymbols = new ITypeSymbol[param.TypeArgumentMetadataNames.Length];
+                bool allResolved = true;
+                for (int i = 0; i < param.TypeArgumentMetadataNames.Length; i++)
+                {
+                    var sym = compilation.GetTypeByMetadataName(param.TypeArgumentMetadataNames[i]);
+                    if (sym == null) { allResolved = false; break; }
+                    typeArgSymbols[i] = sym;
+                }
+                if (!allResolved) continue;
+
+                var closedImpl = implSymbol.Construct(typeArgSymbols);
+                var closedImplFqn = closedImpl.ToDisplayString(FullyQualifiedFormat);
+
+                bool implementsDisposable = closedImpl.AllInterfaces.Any(static i =>
+                    i.SpecialType == SpecialType.System_IDisposable);
+
+                // Build constructor parameters for the closed implementation (type args substituted by Roslyn)
+                var ctor = closedImpl.InstanceConstructors
+                    .Where(static c => c.DeclaredAccessibility == Accessibility.Public)
+                    .OrderByDescending(static c => c.Parameters.Length)
+                    .FirstOrDefault();
+                if (ctor == null) continue;
+
+                var ctorParams = ImmutableArray.CreateBuilder<ConstructorParameterInfo>(ctor.Parameters.Length);
+                foreach (var ctorParam in ctor.Parameters)
+                {
+                    var ctorParamFqn = ctorParam.Type.ToDisplayString(FullyQualifiedFormat);
+                    string? ctorUnboundFqn = null;
+                    ImmutableArray<string> ctorTypeArgMeta = ImmutableArray<string>.Empty;
+
+                    if (ctorParam.Type is INamedTypeSymbol namedCtorParam
+                        && namedCtorParam.IsGenericType && !namedCtorParam.IsUnboundGenericType)
+                    {
+                        var rawUnbound = namedCtorParam.ConstructedFrom.ToDisplayString(FullyQualifiedFormat);
+                        ctorUnboundFqn = ToUnboundGenericString(rawUnbound, namedCtorParam.TypeArguments.Length);
+                        var metaBuilder = ImmutableArray.CreateBuilder<string>(namedCtorParam.TypeArguments.Length);
+                        foreach (var ta in namedCtorParam.TypeArguments)
+                        {
+                            var taNamespace = ta.ContainingNamespace is { IsGlobalNamespace: false } taNs
+                                ? taNs.ToDisplayString() : null;
+                            metaBuilder.Add(taNamespace != null
+                                ? taNamespace + "." + ta.MetadataName
+                                : ta.MetadataName);
+                        }
+                        ctorTypeArgMeta = metaBuilder.ToImmutable();
+                    }
+
+                    var ctorParamInfo = new ConstructorParameterInfo(
+                        ctorParamFqn, ctorParam.Name, false, ctorUnboundFqn, ctorTypeArgMeta);
+                    // Add to work queue for fixed-point iteration if it is a closed generic
+                    if (ctorUnboundFqn != null)
+                        workQueue.Enqueue(ctorParamInfo);
+                    ctorParams.Add(ctorParamInfo);
+                }
+
+                results.Add(new ClosedGenericFactoryInfo(
+                    closedFqn,
+                    closedImplFqn,
+                    og.Lifetime,
+                    ctorParams.ToImmutable(),
+                    implementsDisposable));
+            }
+
+            return results.ToImmutableArray();
         }
     }
 
