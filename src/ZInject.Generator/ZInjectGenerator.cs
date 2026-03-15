@@ -1994,7 +1994,8 @@ namespace ZInject.Generator
                     disposableKeyedSingletonIndices.Add(i);
             }
 
-            if (disposableSingletonIndices.Count > 0 || disposableKeyedSingletonIndices.Count > 0)
+            if (disposableSingletonIndices.Count > 0 || disposableKeyedSingletonIndices.Count > 0
+                || closedGenericFactories.Any(static cgf => cgf.ImplementsDisposable && cgf.Lifetime == "Singleton"))
             {
                 // Dispose(bool) override
                 sb.AppendLine("        protected override void Dispose(bool disposing)");
@@ -2013,6 +2014,13 @@ namespace ZInject.Generator
                     var fieldName = "_keyedSingleton_" + idx;
                     sb.AppendLine("                var __ks" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
                     sb.AppendLine("                (__ks" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                for (int cgIdx = 0; cgIdx < closedGenericFactories.Length; cgIdx++)
+                {
+                    var cgf = closedGenericFactories[cgIdx];
+                    if (!cgf.ImplementsDisposable || cgf.Lifetime != "Singleton") continue;
+                    sb.AppendLine("                var __cg_s_" + cgIdx + " = global::System.Threading.Interlocked.Exchange(ref _cg_s_" + cgIdx + ", null);");
+                    sb.AppendLine("                (__cg_s_" + cgIdx + " as global::System.IDisposable)?.Dispose();");
                 }
                 sb.AppendLine("            }");
                 sb.AppendLine("        }");
@@ -2034,6 +2042,15 @@ namespace ZInject.Generator
                     sb.AppendLine("            var __ks" + idx + " = Interlocked.Exchange(ref " + fieldName + ", null);");
                     sb.AppendLine("            if (__ks" + idx + " is System.IAsyncDisposable __kad" + idx + ") await __kad" + idx + ".DisposeAsync().ConfigureAwait(false);");
                     sb.AppendLine("            else (__ks" + idx + " as System.IDisposable)?.Dispose();");
+                }
+                for (int cgIdx = 0; cgIdx < closedGenericFactories.Length; cgIdx++)
+                {
+                    var cgf = closedGenericFactories[cgIdx];
+                    if (!cgf.ImplementsDisposable || cgf.Lifetime != "Singleton") continue;
+                    sb.AppendLine("            var __cg_sa_" + cgIdx + " = global::System.Threading.Interlocked.Exchange(ref _cg_s_" + cgIdx + ", null);");
+                    sb.AppendLine("            if (__cg_sa_" + cgIdx + " is global::System.IAsyncDisposable __cg_sad_" + cgIdx + ")");
+                    sb.AppendLine("                await __cg_sad_" + cgIdx + ".DisposeAsync().ConfigureAwait(false);");
+                    sb.AppendLine("            else (__cg_sa_" + cgIdx + " as global::System.IDisposable)?.Dispose();");
                 }
                 sb.AppendLine("            await base.DisposeAsync().ConfigureAwait(false);");
                 sb.AppendLine("        }");
