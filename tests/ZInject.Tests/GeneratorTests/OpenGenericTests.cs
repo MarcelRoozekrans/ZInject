@@ -123,4 +123,31 @@ public class OpenGenericTests
         Assert.DoesNotContain("MakeGenericType", output);
         Assert.DoesNotContain("GetMethod(", output);
     }
+
+    [Fact]
+    public void OpenGeneric_StandaloneContainer_ContainsNoReflection()
+    {
+        var source = """
+            using ZInject;
+            namespace TestApp;
+            public interface IRepository<T> { }
+            public class Order { }
+            [Transient]
+            public class Repository<T> : IRepository<T> { }
+            [Transient]
+            public class OrderService
+            {
+                public OrderService(IRepository<Order> repo) { }
+            }
+            """;
+
+        var (output, diagnostics) = GeneratorTestHelper.RunGeneratorWithContainer(source);
+        Assert.DoesNotContain(diagnostics, static d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain("MakeGenericType", output);
+        Assert.DoesNotContain("MakeGenericMethod", output);
+        Assert.DoesNotContain("GetMethod(", output);
+        Assert.DoesNotContain("Delegate.CreateDelegate", output);
+        Assert.DoesNotContain("ConcurrentDictionary", output);
+        Assert.DoesNotContain("GetGenericTypeDefinition", output);
+    }
 }

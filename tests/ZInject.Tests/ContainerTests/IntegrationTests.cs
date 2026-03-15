@@ -1127,6 +1127,11 @@ public class IntegrationTests
             public interface IRepo<T> { }
             [Transient]
             public class Repo<T> : IRepo<T> { }
+            [Transient]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
@@ -1152,6 +1157,11 @@ public class IntegrationTests
             public interface IRepo<T> { }
             [Scoped]
             public class Repo<T> : IRepo<T> { }
+            [Scoped]
+            public class Consumer
+            {
+                public Consumer(IRepo<string> repo) { }
+            }
             """;
 
         var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
@@ -1190,6 +1200,11 @@ public class IntegrationTests
             public interface IRepo<T> { }
             [Singleton]
             public class Repo<T> : IRepo<T> { }
+            [Singleton]
+            public class Consumer
+            {
+                public Consumer(IRepo<int> repo) { }
+            }
             """;
 
         var (assembly, provider) = BuildAndCreateStandaloneProvider(source);
