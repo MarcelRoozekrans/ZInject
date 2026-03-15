@@ -265,7 +265,7 @@ public class DecoratorGeneratorTests
         Assert.Contains("GetService<global::ILogger>", output);         // optional dep
         // Order=2 TracingRetriever wraps unconditionally
         Assert.Contains("new global::TracingRetriever", output);
-        // Order: LoggingRetriever emitted before TracingRetriever
+        // LoggingRetriever (Order=1, innermost) is registered before TracingRetriever (Order=2, outermost) wraps it
         Assert.True(output.IndexOf("LoggingRetriever") < output.IndexOf("TracingRetriever"));
     }
 }
