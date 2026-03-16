@@ -265,6 +265,28 @@ public class AuditLogger { }
 
 The generated registration code emits calls to `IServiceCollection` which lives in `Microsoft.Extensions.DependencyInjection.Abstractions`. Without a reference to this package the generated file will produce compilation errors.
 
+**Triggers ZAI008** — a service class annotated with `[Transient]` in a project that does not reference the abstractions package:
+
+```csharp
+// MyService.cs
+[Transient]
+public class MyService : IMyService
+{
+    // ZAI008: IServiceCollection is unavailable — abstractions package missing
+}
+```
+
+```xml
+<!-- Missing: no Microsoft.Extensions.DependencyInjection.Abstractions reference -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="ZeroAlloc.Inject" Version="*" />
+    <PackageReference Include="ZeroAlloc.Inject.Generator" Version="*" PrivateAssets="all" />
+    <!-- ZAI008: Microsoft.Extensions.DependencyInjection.Abstractions is NOT referenced -->
+  </ItemGroup>
+</Project>
+```
+
 **Fix** — add the package reference to the project file:
 
 ```xml
