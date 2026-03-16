@@ -31,8 +31,9 @@ flowchart LR
     end
     subgraph Infrastructure["MyApp.Infrastructure"]
         I["AddMyAppInfrastructureServices()"]
-        I1["SqlProductRepository"]
-        I2["SmtpEmailGateway"]
+        I1["SqlOrderRepository"]
+        I2["SqlProductRepository"]
+        I3["SmtpEmailGateway"]
     end
     subgraph Application["MyApp.Application"]
         A["AddMyAppApplicationServices()"]
@@ -42,7 +43,7 @@ flowchart LR
     P --> I
     P --> A
     D1 -.->|implemented by| I1
-    D2 -.->|implemented by| I1
+    D2 -.->|implemented by| I2
 ```
 
 Key points to keep in mind:
@@ -69,10 +70,10 @@ By default, ZeroAlloc.Inject requires a service class to have exactly one public
 ZAI009  error  'ReportGenerator' has multiple public constructors. Mark the one to use with [ActivatorUtilitiesConstructor].
 ```
 
-This situation often arises when a class has one constructor for production use (with injected dependencies) and a second for tests (with no external dependencies or with test doubles passed directly). The solution is to mark the production constructor with `[ActivatorUtilitiesConstructor]`, which is part of `Microsoft.Extensions.DependencyInjection`:
+This situation often arises when a class has one constructor for production use (with injected dependencies) and a second for tests (with no external dependencies or with test doubles passed directly). The solution is to mark the production constructor with `[ActivatorUtilitiesConstructor]`, which is part of `Microsoft.Extensions.DependencyInjection.Abstractions`:
 
 ```csharp
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Abstractions;
 using ZeroAlloc.Inject;
 
 [Transient]
@@ -154,7 +155,7 @@ Real-world uses for this pattern include:
 
 `IEnumerable<T>` injection works because MS DI (and the generated hybrid container) natively supports it. In hybrid mode, `IEnumerable<T>` resolution is handled by the generated container's explicit `IEnumerable<T>` type-switch branches, which the generator emits for every service type that has more than one registered implementation within the assembly.
 
-In **pure standalone mode**, `IEnumerable<T>` is supported for types that have multiple implementations all registered within the same assembly, because the generator emits the same type-switch branches there too. However, if the implementations are spread across multiple assemblies and you are using standalone providers per assembly, cross-assembly `IEnumerable<T>` resolution is not handled — use the hybrid mode or the plain MS DI extension method in that scenario.
+In **pure standalone mode**, `IEnumerable<T>` is also supported for types whose multiple implementations are all registered within the same assembly. The generator emits the same `IEnumerable<T>` type-switch branches in `GenerateStandaloneServiceProviderClass` — it groups all registrations by service type (transient, singleton, and scoped alike) and emits an `if (serviceType == typeof(IEnumerable<TService>))` branch that returns an array of every matching implementation. However, if the implementations are spread across multiple assemblies and you are using standalone providers per assembly, cross-assembly `IEnumerable<T>` resolution is not handled — use hybrid mode or the plain MS DI extension method in that scenario.
 
 ---
 
@@ -238,7 +239,7 @@ The simplest fix is to make sure at least one constructor in the assembly declar
 // Ensures IInventory<Product> is resolved in standalone mode.
 // This class can be internal; it does not need to be used at runtime.
 [Transient]
-public class ProductInventoryConsumer
+internal class ProductInventoryConsumer
 {
     public ProductInventoryConsumer(IInventory<Product> inventory) { }
 }
