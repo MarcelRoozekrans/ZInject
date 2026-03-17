@@ -1207,7 +1207,18 @@ namespace ZeroAlloc.Inject.Generator
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, false);
                         sb.AppendLine("            if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("            {");
+                            sb.AppendLine("                var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                ");
+                            sb.AppendLine("                return instance;");
+                            sb.AppendLine("            }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -1233,6 +1244,7 @@ namespace ZeroAlloc.Inject.Generator
                     sb.AppendLine("            {");
                     sb.AppendLine("                if (" + fieldName + " != null) return " + fieldName + ";");
                     sb.AppendLine("                var instance = " + newExpr + ";");
+                    AppendPropertySetters(sb, svc.PropertyInjections, "                ");
                     if (svc.ImplementsDisposable)
                     {
                         sb.AppendLine("                var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
@@ -1424,12 +1436,30 @@ namespace ZeroAlloc.Inject.Generator
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, true);
-                        if (svc.ImplementsDisposable)
-                        {
-                            newExpr = "TrackDisposable(" + newExpr + ")";
-                        }
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                    return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                {");
+                            sb.AppendLine("                    var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                            if (svc.ImplementsDisposable)
+                            {
+                                sb.AppendLine("                    return TrackDisposable(instance);");
+                            }
+                            else
+                            {
+                                sb.AppendLine("                    return instance;");
+                            }
+                            sb.AppendLine("                }");
+                        }
+                        else
+                        {
+                            if (svc.ImplementsDisposable)
+                            {
+                                newExpr = "TrackDisposable(" + newExpr + ")";
+                            }
+                            sb.AppendLine("                    return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -1479,18 +1509,45 @@ namespace ZeroAlloc.Inject.Generator
                             currentExpr = BuildNewExpressionWithDecorator(dec, svc.FullyQualifiedName,
                                 currentExpr, serviceType);
                         }
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + currentExpr + "; TrackDisposable(" + fieldName + "_d); }");
                         sb.AppendLine("                    return " + fieldName + "_d;");
                     }
                     else if (svc.ImplementsDisposable)
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                        TrackDisposable(" + fieldName + "); }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     else
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     sb.AppendLine("                }");
@@ -2164,12 +2221,30 @@ namespace ZeroAlloc.Inject.Generator
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, true);
-                        if (svc.ImplementsDisposable)
-                        {
-                            newExpr = "TrackDisposable(" + newExpr + ")";
-                        }
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                    return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                {");
+                            sb.AppendLine("                    var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                            if (svc.ImplementsDisposable)
+                            {
+                                sb.AppendLine("                    return TrackDisposable(instance);");
+                            }
+                            else
+                            {
+                                sb.AppendLine("                    return instance;");
+                            }
+                            sb.AppendLine("                }");
+                        }
+                        else
+                        {
+                            if (svc.ImplementsDisposable)
+                            {
+                                newExpr = "TrackDisposable(" + newExpr + ")";
+                            }
+                            sb.AppendLine("                    return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -2219,18 +2294,45 @@ namespace ZeroAlloc.Inject.Generator
                             currentExpr = BuildNewExpressionWithDecorator(dec, svc.FullyQualifiedName,
                                 currentExpr, serviceType);
                         }
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + currentExpr + "; TrackDisposable(" + fieldName + "_d); }");
                         sb.AppendLine("                    return " + fieldName + "_d;");
                     }
                     else if (svc.ImplementsDisposable)
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                        TrackDisposable(" + fieldName + "); }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     else
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     sb.AppendLine("                }");
@@ -2600,6 +2702,31 @@ namespace ZeroAlloc.Inject.Generator
             }
 
             color[node] = 2; // black
+        }
+
+        /// <summary>
+        /// Appends property setter statements into a block body for the fast-path code-gen.
+        /// Each setter is placed on its own line with the given <paramref name="indent"/>.
+        /// Uses <c>GetService(typeof(T))</c> which is available on the generated provider/scope class.
+        /// </summary>
+        private static void AppendPropertySetters(
+            StringBuilder sb,
+            List<PropertyInjectionInfo> propertyInjections,
+            string indent)
+        {
+            foreach (var prop in propertyInjections)
+            {
+                sb.Append(indent)
+                  .Append("instance.")
+                  .Append(prop.PropertyName)
+                  .Append(" = (")
+                  .Append(prop.FullyQualifiedTypeName)
+                  .Append(prop.IsRequired ? ")" : "?)")
+                  .Append("GetService(typeof(")
+                  .Append(prop.FullyQualifiedTypeName)
+                  .Append("))")
+                  .AppendLine(prop.IsRequired ? "!;" : ";");
+            }
         }
 
         private static string BuildNewExpression(ServiceRegistrationInfo svc)
