@@ -190,6 +190,15 @@ namespace ZeroAlloc.Inject.Generator
                             svc.TypeName,
                             svc.OptionalNonNullableParamType));
                     }
+
+                    foreach (var propName in svc.NonSettableInjectProperties)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.InjectOnNonSettableProperty,
+                            Location.None,
+                            propName,
+                            svc.TypeName));
+                    }
                 }
 
                 if (allServices.Count == 0 && decoratorInfos.Length == 0)
@@ -611,6 +620,40 @@ namespace ZeroAlloc.Inject.Generator
                 }
             }
 
+            // Property injection scanning
+            var propertyInjections = new List<PropertyInjectionInfo>();
+            var nonSettableInjectPropNames = new List<string>();
+            foreach (var member in typeSymbol.GetMembers())
+            {
+                if (member is not IPropertySymbol propSymbol) continue;
+                var injectAttr = propSymbol.GetAttributes()
+                    .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "ZeroAlloc.Inject.InjectAttribute");
+                if (injectAttr == null) continue;
+
+                // Validate: must have a public setter (init-only setters are treated as get-only)
+                bool hasPublicSetter = propSymbol.SetMethod != null
+                    && propSymbol.SetMethod.DeclaredAccessibility == Accessibility.Public
+                    && !propSymbol.SetMethod.IsInitOnly;
+                if (!hasPublicSetter)
+                {
+                    nonSettableInjectPropNames.Add(propSymbol.Name);
+                    continue;
+                }
+
+                bool isRequired = true;
+                foreach (var namedArg in injectAttr.NamedArguments)
+                {
+                    if (namedArg.Key == "Required" && namedArg.Value.Value is bool reqVal)
+                    {
+                        isRequired = reqVal;
+                        break;
+                    }
+                }
+
+                var propTypeFqn = propSymbol.Type.ToDisplayString(FullyQualifiedFormat);
+                propertyInjections.Add(new PropertyInjectionInfo(propTypeFqn, propSymbol.Name, isRequired));
+            }
+
             string? implementationMetadataName = null;
             if (isOpenGeneric)
             {
@@ -641,7 +684,9 @@ namespace ZeroAlloc.Inject.Generator
                 optionalNonNullableParamName,
                 optionalNonNullableParamType,
                 implementsDisposable,
-                implementationMetadataName);
+                implementationMetadataName,
+                propertyInjections: propertyInjections,
+                nonSettableInjectProperties: nonSettableInjectPropNames);
         }
 
         private static string GenerateExtensionClass(
@@ -719,48 +764,63 @@ namespace ZeroAlloc.Inject.Generator
             return sb.ToString();
         }
 
-        private static string BuildFactoryLambda(string implType, List<ConstructorParameterInfo> parameters)
+        private static string BuildFactoryLambda(string implType, List<ConstructorParameterInfo> parameters, List<PropertyInjectionInfo> propertyInjections)
         {
-            return BuildFactoryLambdaCore(implType, parameters, false);
+            return BuildFactoryLambdaCore(implType, parameters, false, propertyInjections);
         }
 
-        private static string BuildKeyedFactoryLambda(string implType, List<ConstructorParameterInfo> parameters)
+        private static string BuildKeyedFactoryLambda(string implType, List<ConstructorParameterInfo> parameters, List<PropertyInjectionInfo> propertyInjections)
         {
-            return BuildFactoryLambdaCore(implType, parameters, true);
+            return BuildFactoryLambdaCore(implType, parameters, true, propertyInjections);
         }
 
-        private static string BuildFactoryLambdaCore(string implType, List<ConstructorParameterInfo> parameters, bool keyed)
+        private static string BuildFactoryLambdaCore(string implType, List<ConstructorParameterInfo> parameters, bool keyed, List<PropertyInjectionInfo> propertyInjections)
         {
-            var spPrefix = keyed ? "(sp, _) => new " : "sp => new ";
+            var spPrefix = keyed ? "(sp, _)" : "sp";
+            bool hasProps = propertyInjections.Count > 0;
 
-            if (parameters.Count == 0)
+            // Build the constructor call expression
+            var ctorSb = new StringBuilder();
+            ctorSb.Append("new ").Append(implType).Append("(");
+            if (parameters.Count > 0)
             {
-                return spPrefix + implType + "()";
-            }
-
-            var factorySb = new StringBuilder();
-            factorySb.Append(spPrefix);
-            factorySb.Append(implType);
-            factorySb.Append("(\n");
-
-            for (int i = 0; i < parameters.Count; i++)
-            {
-                var param = parameters[i];
-                var method = param.IsOptional ? "GetService" : "GetRequiredService";
-                factorySb.Append("                sp.");
-                factorySb.Append(method);
-                factorySb.Append("<");
-                factorySb.Append(param.FullyQualifiedTypeName);
-                factorySb.Append(">()");
-                if (i < parameters.Count - 1)
+                ctorSb.Append("\n");
+                for (int i = 0; i < parameters.Count; i++)
                 {
-                    factorySb.Append(",");
+                    var param = parameters[i];
+                    var method = param.IsOptional ? "GetService" : "GetRequiredService";
+                    ctorSb.Append("                sp.");
+                    ctorSb.Append(method).Append("<").Append(param.FullyQualifiedTypeName).Append(">()");
+                    if (i < parameters.Count - 1) ctorSb.Append(",");
+                    ctorSb.Append("\n");
                 }
-                factorySb.Append("\n");
+                ctorSb.Append("            )");
+            }
+            else
+            {
+                ctorSb.Append(")");
             }
 
-            factorySb.Append("            )");
-            return factorySb.ToString();
+            if (!hasProps)
+            {
+                // Expression lambda — same shape as before
+                return spPrefix + " => " + ctorSb;
+            }
+
+            // Block lambda
+            var sb = new StringBuilder();
+            sb.Append(spPrefix).Append(" =>\n            {\n");
+            sb.Append("                var instance = ").Append(ctorSb).Append(";\n");
+            foreach (var prop in propertyInjections)
+            {
+                var method = prop.IsRequired ? "GetRequiredService" : "GetService";
+                sb.Append("                instance.").Append(prop.PropertyName)
+                  .Append(" = sp.").Append(method)
+                  .Append("<").Append(prop.FullyQualifiedTypeName).Append(">();\n");
+            }
+            sb.Append("                return instance;\n");
+            sb.Append("            }");
+            return sb.ToString();
         }
 
         private static void EmitRegistration(
@@ -775,7 +835,7 @@ namespace ZeroAlloc.Inject.Generator
             if (svc.AsType != null)
             {
                 // Only register as the specified type
-                EmitSingleRegistration(sb, lifetime, svc.AsType, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+                EmitSingleRegistration(sb, lifetime, svc.AsType, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters, svc.PropertyInjections);
                 return;
             }
 
@@ -789,12 +849,12 @@ namespace ZeroAlloc.Inject.Generator
                 }
                 else
                 {
-                    EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+                    EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters, svc.PropertyInjections);
                 }
             }
 
             // Always register concrete type (inner needs to be resolvable by itself)
-            EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+            EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters, svc.PropertyInjections);
         }
 
         private static void EmitDecoratorRegistrations(
@@ -920,7 +980,8 @@ namespace ZeroAlloc.Inject.Generator
             string? key,
             bool useAdd,
             bool isOpenGeneric,
-            List<ConstructorParameterInfo> constructorParameters)
+            List<ConstructorParameterInfo> constructorParameters,
+            List<PropertyInjectionInfo> propertyInjections)
         {
             if (isOpenGeneric)
             {
@@ -935,7 +996,7 @@ namespace ZeroAlloc.Inject.Generator
             if (key != null)
             {
                 var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
-                var factory = BuildKeyedFactoryLambda(implType, constructorParameters);
+                var factory = BuildKeyedFactoryLambda(implType, constructorParameters, propertyInjections);
                 var escapedKey = key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>(\"{2}\", {3});",
@@ -944,7 +1005,7 @@ namespace ZeroAlloc.Inject.Generator
             else
             {
                 var method = useAdd ? "Add" + lifetime : "TryAdd" + lifetime;
-                var factory = BuildFactoryLambda(implType, constructorParameters);
+                var factory = BuildFactoryLambda(implType, constructorParameters, propertyInjections);
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>({2});",
                     method, serviceType, factory));
@@ -1147,7 +1208,18 @@ namespace ZeroAlloc.Inject.Generator
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, false);
                         sb.AppendLine("            if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("            {");
+                            sb.AppendLine("                var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                ");
+                            sb.AppendLine("                return instance;");
+                            sb.AppendLine("            }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -1173,6 +1245,7 @@ namespace ZeroAlloc.Inject.Generator
                     sb.AppendLine("            {");
                     sb.AppendLine("                if (" + fieldName + " != null) return " + fieldName + ";");
                     sb.AppendLine("                var instance = " + newExpr + ";");
+                    AppendPropertySetters(sb, svc.PropertyInjections, "                ");
                     if (svc.ImplementsDisposable)
                     {
                         sb.AppendLine("                var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
@@ -1258,6 +1331,10 @@ namespace ZeroAlloc.Inject.Generator
                         sb.AppendLine("                {");
                         sb.AppendLine("                    if (" + fieldName + " != null) return " + fieldName + ";");
                         sb.AppendLine("                    var instance = " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                        }
                         if (svc.ImplementsDisposable)
                         {
                             sb.AppendLine("                    var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
@@ -1281,7 +1358,18 @@ namespace ZeroAlloc.Inject.Generator
                     foreach (var serviceType in serviceTypes)
                     {
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
-                        sb.AppendLine("                    return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                {");
+                            sb.AppendLine("                    var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                            sb.AppendLine("                    return instance;");
+                            sb.AppendLine("                }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    return " + newExpr + ";");
+                        }
                     }
                 }
 
@@ -1364,12 +1452,30 @@ namespace ZeroAlloc.Inject.Generator
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, true);
-                        if (svc.ImplementsDisposable)
-                        {
-                            newExpr = "TrackDisposable(" + newExpr + ")";
-                        }
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                    return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                {");
+                            sb.AppendLine("                    var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                            if (svc.ImplementsDisposable)
+                            {
+                                sb.AppendLine("                    return TrackDisposable(instance);");
+                            }
+                            else
+                            {
+                                sb.AppendLine("                    return instance;");
+                            }
+                            sb.AppendLine("                }");
+                        }
+                        else
+                        {
+                            if (svc.ImplementsDisposable)
+                            {
+                                newExpr = "TrackDisposable(" + newExpr + ")";
+                            }
+                            sb.AppendLine("                    return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -1419,18 +1525,45 @@ namespace ZeroAlloc.Inject.Generator
                             currentExpr = BuildNewExpressionWithDecorator(dec, svc.FullyQualifiedName,
                                 currentExpr, serviceType);
                         }
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + currentExpr + "; TrackDisposable(" + fieldName + "_d); }");
                         sb.AppendLine("                    return " + fieldName + "_d;");
                     }
                     else if (svc.ImplementsDisposable)
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                        TrackDisposable(" + fieldName + "); }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     else
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     sb.AppendLine("                }");
@@ -1769,7 +1902,18 @@ namespace ZeroAlloc.Inject.Generator
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, false);
                         sb.AppendLine("            if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("            {");
+                            sb.AppendLine("                var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                ");
+                            sb.AppendLine("                return instance;");
+                            sb.AppendLine("            }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -1795,6 +1939,7 @@ namespace ZeroAlloc.Inject.Generator
                     sb.AppendLine("            {");
                     sb.AppendLine("                if (" + fieldName + " != null) return " + fieldName + ";");
                     sb.AppendLine("                var instance = " + newExpr + ";");
+                    AppendPropertySetters(sb, svc.PropertyInjections, "                ");
                     if (svc.ImplementsDisposable)
                     {
                         sb.AppendLine("                var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
@@ -1908,6 +2053,10 @@ namespace ZeroAlloc.Inject.Generator
                         sb.AppendLine("                {");
                         sb.AppendLine("                    if (" + fieldName + " != null) return " + fieldName + ";");
                         sb.AppendLine("                    var instance = " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                        }
                         if (svc.ImplementsDisposable)
                         {
                             sb.AppendLine("                    var existing = Interlocked.CompareExchange(ref " + fieldName + ", instance, null);");
@@ -1931,7 +2080,18 @@ namespace ZeroAlloc.Inject.Generator
                     foreach (var serviceType in serviceTypes)
                     {
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + ") && key == \"" + escapedKey + "\")");
-                        sb.AppendLine("                    return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                {");
+                            sb.AppendLine("                    var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                            sb.AppendLine("                    return instance;");
+                            sb.AppendLine("                }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    return " + newExpr + ";");
+                        }
                     }
                 }
 
@@ -2104,12 +2264,30 @@ namespace ZeroAlloc.Inject.Generator
                         && lastEntry.Svc == svc && lastEntry.Lifetime == "Transient")
                     {
                         var newExpr = BuildDecoratedNewExpression(svc, serviceType, decoratorsByInterface, true);
-                        if (svc.ImplementsDisposable)
-                        {
-                            newExpr = "TrackDisposable(" + newExpr + ")";
-                        }
                         sb.AppendLine("                if (serviceType == typeof(" + serviceType + "))");
-                        sb.AppendLine("                    return " + newExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                {");
+                            sb.AppendLine("                    var instance = " + newExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                    ");
+                            if (svc.ImplementsDisposable)
+                            {
+                                sb.AppendLine("                    return TrackDisposable(instance);");
+                            }
+                            else
+                            {
+                                sb.AppendLine("                    return instance;");
+                            }
+                            sb.AppendLine("                }");
+                        }
+                        else
+                        {
+                            if (svc.ImplementsDisposable)
+                            {
+                                newExpr = "TrackDisposable(" + newExpr + ")";
+                            }
+                            sb.AppendLine("                    return " + newExpr + ";");
+                        }
                     }
                 }
             }
@@ -2159,18 +2337,45 @@ namespace ZeroAlloc.Inject.Generator
                             currentExpr = BuildNewExpressionWithDecorator(dec, svc.FullyQualifiedName,
                                 currentExpr, serviceType);
                         }
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    if (" + fieldName + "_d == null) { " + fieldName + "_d = " + currentExpr + "; TrackDisposable(" + fieldName + "_d); }");
                         sb.AppendLine("                    return " + fieldName + "_d;");
                     }
                     else if (svc.ImplementsDisposable)
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                        TrackDisposable(" + fieldName + "); }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + "; TrackDisposable(" + fieldName + "); }");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     else
                     {
-                        sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        if (svc.PropertyInjections.Count > 0)
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            sb.AppendLine("                    }");
+                        }
+                        else
+                        {
+                            sb.AppendLine("                    if (" + fieldName + " == null) " + fieldName + " = " + innerExpr + ";");
+                        }
                         sb.AppendLine("                    return " + fieldName + ";");
                     }
                     sb.AppendLine("                }");
@@ -2542,6 +2747,31 @@ namespace ZeroAlloc.Inject.Generator
             color[node] = 2; // black
         }
 
+        /// <summary>
+        /// Appends property setter statements into a block body for the fast-path code-gen.
+        /// Each setter is placed on its own line with the given <paramref name="indent"/>.
+        /// Uses <c>GetService(typeof(T))</c> which is available on the generated provider/scope class.
+        /// </summary>
+        private static void AppendPropertySetters(
+            StringBuilder sb,
+            List<PropertyInjectionInfo> propertyInjections,
+            string indent)
+        {
+            foreach (var prop in propertyInjections)
+            {
+                sb.Append(indent)
+                  .Append("instance.")
+                  .Append(prop.PropertyName)
+                  .Append(" = (")
+                  .Append(prop.FullyQualifiedTypeName)
+                  .Append(prop.IsRequired ? ")" : "?)")
+                  .Append("GetService(typeof(")
+                  .Append(prop.FullyQualifiedTypeName)
+                  .Append("))")
+                  .AppendLine(prop.IsRequired ? "!;" : ";");
+            }
+        }
+
         private static string BuildNewExpression(ServiceRegistrationInfo svc)
         {
             return BuildNewExpressionCore(svc, false);
@@ -2727,7 +2957,8 @@ namespace ZeroAlloc.Inject.Generator
             string? key,
             bool useAdd,
             bool isOpenGeneric,
-            List<ConstructorParameterInfo> constructorParameters)
+            List<ConstructorParameterInfo> constructorParameters,
+            List<PropertyInjectionInfo> propertyInjections)
         {
             if (isOpenGeneric)
             {
@@ -2741,7 +2972,7 @@ namespace ZeroAlloc.Inject.Generator
             if (key != null)
             {
                 var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
-                var factory = BuildKeyedFactoryLambda(implType, constructorParameters);
+                var factory = BuildKeyedFactoryLambda(implType, constructorParameters, propertyInjections);
                 var escapedKey = key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>(\"{2}\", {3});",
@@ -2750,7 +2981,7 @@ namespace ZeroAlloc.Inject.Generator
             else
             {
                 var method = useAdd ? "Add" + lifetime : "TryAdd" + lifetime;
-                var factory = BuildFactoryLambda(implType, constructorParameters);
+                var factory = BuildFactoryLambda(implType, constructorParameters, propertyInjections);
                 sb.AppendLine(string.Format(
                     "            services.{0}({1});",
                     method, factory));
