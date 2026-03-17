@@ -340,6 +340,14 @@ Constructor injection is the preferred pattern for required dependencies. Proper
 - **Circular dependency breaking** — when two services each depend on the other (use with care; restructuring is usually better)
 - **Framework integration** — when a base class constructor signature cannot be modified
 
+### Performance
+
+Property injection adds a negligible overhead in the generated containers. A transient with one property-injected dependency resolves in **19–22 ns** versus **15–17 ns** for an equivalent constructor-injected dependency — a ~12–47% increase that is imperceptible at normal service resolution rates. Allocation is identical in both cases.
+
+MS DI is more affected: its factory-lambda approach for property injection costs ~38 ns versus ~15 ns for constructor injection (a ~2.5× increase), because MS DI cannot cache the factory delegate the same way it caches constructor metadata. This makes property injection in ZeroAlloc.Inject generated containers **~2× faster than MS DI's equivalent** even though the generated code follows the same block-lambda pattern.
+
+See [Performance](./performance#property-injection-2x-faster-than-ms-di) for full benchmark numbers.
+
 ### Limitations
 
 - The property must have a `public` setter. `get`-only and `init`-only properties trigger [ZAI019](./diagnostics#zai019).
