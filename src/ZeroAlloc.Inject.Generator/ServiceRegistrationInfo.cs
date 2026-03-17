@@ -18,6 +18,8 @@ namespace ZeroAlloc.Inject.Generator
         public string? OpenGenericArity { get; }
         public bool HasPublicConstructor { get; }
         public List<ConstructorParameterInfo> ConstructorParameters { get; }
+        public List<PropertyInjectionInfo> PropertyInjections { get; }
+        public List<string> NonSettableInjectProperties { get; }
         public bool HasMultipleConstructors { get; }
         public string? PrimitiveParameterName { get; }
         public string? PrimitiveParameterType { get; }
@@ -45,7 +47,9 @@ namespace ZeroAlloc.Inject.Generator
             string? optionalNonNullableParamName,
             string? optionalNonNullableParamType,
             bool implementsDisposable,
-            string? implementationMetadataName = null)
+            string? implementationMetadataName = null,
+            List<PropertyInjectionInfo>? propertyInjections = null,
+            List<string>? nonSettableInjectProperties = null)
         {
             Namespace = ns;
             TypeName = typeName;
@@ -66,6 +70,8 @@ namespace ZeroAlloc.Inject.Generator
             OptionalNonNullableParamType = optionalNonNullableParamType;
             ImplementsDisposable = implementsDisposable;
             ImplementationMetadataName = implementationMetadataName;
+            PropertyInjections = propertyInjections ?? new List<PropertyInjectionInfo>();
+            NonSettableInjectProperties = nonSettableInjectProperties ?? new List<string>();
         }
 
         public bool Equals(ServiceRegistrationInfo? other)
@@ -86,6 +92,8 @@ namespace ZeroAlloc.Inject.Generator
                 || ImplementsDisposable != other.ImplementsDisposable
                 || ImplementationMetadataName != other.ImplementationMetadataName
                 || ConstructorParameters.Count != other.ConstructorParameters.Count
+                || PropertyInjections.Count != other.PropertyInjections.Count
+                || NonSettableInjectProperties.Count != other.NonSettableInjectProperties.Count
                 || Interfaces.Count != other.Interfaces.Count)
             {
                 return false;
@@ -107,6 +115,12 @@ namespace ZeroAlloc.Inject.Generator
                 }
             }
 
+            for (int i = 0; i < PropertyInjections.Count; i++)
+            {
+                if (!PropertyInjections[i].Equals(other.PropertyInjections[i]))
+                    return false;
+            }
+
             return true;
         }
 
@@ -121,6 +135,7 @@ namespace ZeroAlloc.Inject.Generator
                 hash = hash * 31 + Lifetime.GetHashCode();
                 hash = hash * 31 + IsOpenGeneric.GetHashCode();
                 hash = hash * 31 + ConstructorParameters.Count.GetHashCode();
+                hash = hash * 31 + PropertyInjections.Count.GetHashCode();
                 return hash;
             }
         }
