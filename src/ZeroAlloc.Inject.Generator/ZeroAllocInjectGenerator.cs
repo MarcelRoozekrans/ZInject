@@ -1528,7 +1528,7 @@ namespace ZeroAlloc.Inject.Generator
                         if (svc.PropertyInjections.Count > 0)
                         {
                             sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
-                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ", fieldName);
                             sb.AppendLine("                    }");
                         }
                         else
@@ -1543,7 +1543,7 @@ namespace ZeroAlloc.Inject.Generator
                         if (svc.PropertyInjections.Count > 0)
                         {
                             sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
-                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ", fieldName);
                             sb.AppendLine("                        TrackDisposable(" + fieldName + "); }");
                         }
                         else
@@ -1557,7 +1557,7 @@ namespace ZeroAlloc.Inject.Generator
                         if (svc.PropertyInjections.Count > 0)
                         {
                             sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
-                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ", fieldName);
                             sb.AppendLine("                    }");
                         }
                         else
@@ -2340,7 +2340,7 @@ namespace ZeroAlloc.Inject.Generator
                         if (svc.PropertyInjections.Count > 0)
                         {
                             sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
-                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ", fieldName);
                             sb.AppendLine("                    }");
                         }
                         else
@@ -2355,7 +2355,7 @@ namespace ZeroAlloc.Inject.Generator
                         if (svc.PropertyInjections.Count > 0)
                         {
                             sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
-                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ", fieldName);
                             sb.AppendLine("                        TrackDisposable(" + fieldName + "); }");
                         }
                         else
@@ -2369,7 +2369,7 @@ namespace ZeroAlloc.Inject.Generator
                         if (svc.PropertyInjections.Count > 0)
                         {
                             sb.AppendLine("                    if (" + fieldName + " == null) { " + fieldName + " = " + innerExpr + ";");
-                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ");
+                            AppendPropertySetters(sb, svc.PropertyInjections, "                        ", fieldName);
                             sb.AppendLine("                    }");
                         }
                         else
@@ -2755,12 +2755,13 @@ namespace ZeroAlloc.Inject.Generator
         private static void AppendPropertySetters(
             StringBuilder sb,
             List<PropertyInjectionInfo> propertyInjections,
-            string indent)
+            string indent,
+            string targetName = "instance")
         {
             foreach (var prop in propertyInjections)
             {
                 sb.Append(indent)
-                  .Append("instance.")
+                  .Append(targetName).Append(".")
                   .Append(prop.PropertyName)
                   .Append(" = (")
                   .Append(prop.FullyQualifiedTypeName)
