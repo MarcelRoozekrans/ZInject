@@ -763,48 +763,63 @@ namespace ZeroAlloc.Inject.Generator
             return sb.ToString();
         }
 
-        private static string BuildFactoryLambda(string implType, List<ConstructorParameterInfo> parameters)
+        private static string BuildFactoryLambda(string implType, List<ConstructorParameterInfo> parameters, List<PropertyInjectionInfo> propertyInjections)
         {
-            return BuildFactoryLambdaCore(implType, parameters, false);
+            return BuildFactoryLambdaCore(implType, parameters, false, propertyInjections);
         }
 
-        private static string BuildKeyedFactoryLambda(string implType, List<ConstructorParameterInfo> parameters)
+        private static string BuildKeyedFactoryLambda(string implType, List<ConstructorParameterInfo> parameters, List<PropertyInjectionInfo> propertyInjections)
         {
-            return BuildFactoryLambdaCore(implType, parameters, true);
+            return BuildFactoryLambdaCore(implType, parameters, true, propertyInjections);
         }
 
-        private static string BuildFactoryLambdaCore(string implType, List<ConstructorParameterInfo> parameters, bool keyed)
+        private static string BuildFactoryLambdaCore(string implType, List<ConstructorParameterInfo> parameters, bool keyed, List<PropertyInjectionInfo> propertyInjections)
         {
-            var spPrefix = keyed ? "(sp, _) => new " : "sp => new ";
+            var spPrefix = keyed ? "(sp, _)" : "sp";
+            bool hasProps = propertyInjections.Count > 0;
 
-            if (parameters.Count == 0)
+            // Build the constructor call expression
+            var ctorSb = new StringBuilder();
+            ctorSb.Append("new ").Append(implType).Append("(");
+            if (parameters.Count > 0)
             {
-                return spPrefix + implType + "()";
-            }
-
-            var factorySb = new StringBuilder();
-            factorySb.Append(spPrefix);
-            factorySb.Append(implType);
-            factorySb.Append("(\n");
-
-            for (int i = 0; i < parameters.Count; i++)
-            {
-                var param = parameters[i];
-                var method = param.IsOptional ? "GetService" : "GetRequiredService";
-                factorySb.Append("                sp.");
-                factorySb.Append(method);
-                factorySb.Append("<");
-                factorySb.Append(param.FullyQualifiedTypeName);
-                factorySb.Append(">()");
-                if (i < parameters.Count - 1)
+                ctorSb.Append("\n");
+                for (int i = 0; i < parameters.Count; i++)
                 {
-                    factorySb.Append(",");
+                    var param = parameters[i];
+                    var method = param.IsOptional ? "GetService" : "GetRequiredService";
+                    ctorSb.Append("                sp.");
+                    ctorSb.Append(method).Append("<").Append(param.FullyQualifiedTypeName).Append(">()");
+                    if (i < parameters.Count - 1) ctorSb.Append(",");
+                    ctorSb.Append("\n");
                 }
-                factorySb.Append("\n");
+                ctorSb.Append("            )");
+            }
+            else
+            {
+                ctorSb.Append(")");
             }
 
-            factorySb.Append("            )");
-            return factorySb.ToString();
+            if (!hasProps)
+            {
+                // Expression lambda — same shape as before
+                return spPrefix + " => " + ctorSb;
+            }
+
+            // Block lambda
+            var sb = new StringBuilder();
+            sb.Append(spPrefix).Append(" =>\n            {\n");
+            sb.Append("                var instance = ").Append(ctorSb).Append(";\n");
+            foreach (var prop in propertyInjections)
+            {
+                var method = prop.IsRequired ? "GetRequiredService" : "GetService";
+                sb.Append("                instance.").Append(prop.PropertyName)
+                  .Append(" = sp.").Append(method)
+                  .Append("<").Append(prop.FullyQualifiedTypeName).Append(">();\n");
+            }
+            sb.Append("                return instance;\n");
+            sb.Append("            }");
+            return sb.ToString();
         }
 
         private static void EmitRegistration(
@@ -819,7 +834,7 @@ namespace ZeroAlloc.Inject.Generator
             if (svc.AsType != null)
             {
                 // Only register as the specified type
-                EmitSingleRegistration(sb, lifetime, svc.AsType, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+                EmitSingleRegistration(sb, lifetime, svc.AsType, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters, svc.PropertyInjections);
                 return;
             }
 
@@ -833,12 +848,12 @@ namespace ZeroAlloc.Inject.Generator
                 }
                 else
                 {
-                    EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+                    EmitSingleRegistration(sb, lifetime, iface, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters, svc.PropertyInjections);
                 }
             }
 
             // Always register concrete type (inner needs to be resolvable by itself)
-            EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters);
+            EmitConcreteRegistration(sb, lifetime, fqn, svc.Key, useAdd, svc.IsOpenGeneric, svc.ConstructorParameters, svc.PropertyInjections);
         }
 
         private static void EmitDecoratorRegistrations(
@@ -964,7 +979,8 @@ namespace ZeroAlloc.Inject.Generator
             string? key,
             bool useAdd,
             bool isOpenGeneric,
-            List<ConstructorParameterInfo> constructorParameters)
+            List<ConstructorParameterInfo> constructorParameters,
+            List<PropertyInjectionInfo> propertyInjections)
         {
             if (isOpenGeneric)
             {
@@ -979,7 +995,7 @@ namespace ZeroAlloc.Inject.Generator
             if (key != null)
             {
                 var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
-                var factory = BuildKeyedFactoryLambda(implType, constructorParameters);
+                var factory = BuildKeyedFactoryLambda(implType, constructorParameters, propertyInjections);
                 var escapedKey = key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>(\"{2}\", {3});",
@@ -988,7 +1004,7 @@ namespace ZeroAlloc.Inject.Generator
             else
             {
                 var method = useAdd ? "Add" + lifetime : "TryAdd" + lifetime;
-                var factory = BuildFactoryLambda(implType, constructorParameters);
+                var factory = BuildFactoryLambda(implType, constructorParameters, propertyInjections);
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>({2});",
                     method, serviceType, factory));
@@ -2771,7 +2787,8 @@ namespace ZeroAlloc.Inject.Generator
             string? key,
             bool useAdd,
             bool isOpenGeneric,
-            List<ConstructorParameterInfo> constructorParameters)
+            List<ConstructorParameterInfo> constructorParameters,
+            List<PropertyInjectionInfo> propertyInjections)
         {
             if (isOpenGeneric)
             {
@@ -2785,7 +2802,7 @@ namespace ZeroAlloc.Inject.Generator
             if (key != null)
             {
                 var method = useAdd ? "AddKeyed" + lifetime : "TryAddKeyed" + lifetime;
-                var factory = BuildKeyedFactoryLambda(implType, constructorParameters);
+                var factory = BuildKeyedFactoryLambda(implType, constructorParameters, propertyInjections);
                 var escapedKey = key.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 sb.AppendLine(string.Format(
                     "            services.{0}<{1}>(\"{2}\", {3});",
@@ -2794,7 +2811,7 @@ namespace ZeroAlloc.Inject.Generator
             else
             {
                 var method = useAdd ? "Add" + lifetime : "TryAdd" + lifetime;
-                var factory = BuildFactoryLambda(implType, constructorParameters);
+                var factory = BuildFactoryLambda(implType, constructorParameters, propertyInjections);
                 sb.AppendLine(string.Format(
                     "            services.{0}({1});",
                     method, factory));
