@@ -60,6 +60,7 @@ The generator derives the method name from the assembly name: `MyApp` → `AddMy
 | Transient (no deps) | 23 ns | **13 ns** | 15 ns |
 | Singleton | 16 ns | **11 ns** | 12 ns |
 | Decorated transient | 41 ns / 48 B | **18 ns / 48 B** | 17 ns / 48 B |
+| Transient (1 property-injected dep) | 38 ns / 48 B | **19 ns / 48 B** | 22 ns / 48 B |
 | Resolve scoped (full lifecycle) | ~26,000 ns / 808 B | ~12,300 ns / 120 B | **~12,000 ns / 120 B** |
 
 Full methodology, all scenarios, and analysis: [docs/performance.md](docs/performance.md).

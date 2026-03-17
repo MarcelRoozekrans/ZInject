@@ -75,6 +75,139 @@ public class PropertyInjectionIntegrationTests
     }
 
     // ---------------------------------------------------------------
+    // 3. Singleton service with property injection
+    // ---------------------------------------------------------------
+    [Fact]
+    public void InjectProperty_Singleton_IsPopulatedAtResolution()
+    {
+        const string source = """
+            using ZeroAlloc.Inject;
+            namespace TestApp;
+            public interface IDep { string Value { get; } }
+            [Transient]
+            public class Dep : IDep { public string Value => "singleton-injected"; }
+            public interface IMySingleton { IDep Dep { get; } }
+            [Singleton]
+            public class MySingleton : IMySingleton
+            {
+                [Inject]
+                public IDep Dep { get; set; } = null!;
+                IDep IMySingleton.Dep => Dep;
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateProvider(source);
+        var serviceType = assembly.GetType("TestApp.IMySingleton")!;
+
+        var instance = provider.GetService(serviceType)!;
+        var depProp = serviceType.GetProperty("Dep")!;
+        var dep = depProp.GetValue(instance)!;
+        var valueProp = dep.GetType().GetProperty("Value")!;
+        Assert.Equal("singleton-injected", (string)valueProp.GetValue(dep)!);
+    }
+
+    // ---------------------------------------------------------------
+    // 4. Scoped service with property injection
+    // ---------------------------------------------------------------
+    [Fact]
+    public void InjectProperty_Scoped_IsPopulatedAtResolution()
+    {
+        const string source = """
+            using ZeroAlloc.Inject;
+            namespace TestApp;
+            public interface IDep { string Value { get; } }
+            [Transient]
+            public class Dep : IDep { public string Value => "scoped-injected"; }
+            public interface IMyScoped { IDep Dep { get; } }
+            [Scoped]
+            public class MyScoped : IMyScoped
+            {
+                [Inject]
+                public IDep Dep { get; set; } = null!;
+                IDep IMyScoped.Dep => Dep;
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateProvider(source);
+        var serviceType = assembly.GetType("TestApp.IMyScoped")!;
+        using var scope = ((IServiceScopeFactory)provider).CreateScope();
+        var instance = scope.ServiceProvider.GetService(serviceType)!;
+        var depProp = serviceType.GetProperty("Dep")!;
+        var dep = depProp.GetValue(instance)!;
+        var valueProp = dep.GetType().GetProperty("Value")!;
+        Assert.Equal("scoped-injected", (string)valueProp.GetValue(dep)!);
+    }
+
+    // ---------------------------------------------------------------
+    // 5. Optional [Inject] property IS populated when dep is registered
+    // ---------------------------------------------------------------
+    [Fact]
+    public void InjectProperty_OptionalRegistered_IsPopulated()
+    {
+        const string source = """
+            using ZeroAlloc.Inject;
+            namespace TestApp;
+            public interface IOptDep { string Value { get; } }
+            [Transient]
+            public class OptDep : IOptDep { public string Value => "optional-present"; }
+            public interface IMyService { IOptDep? Opt { get; } }
+            [Transient]
+            public class MyService : IMyService
+            {
+                [Inject(Required = false)]
+                public IOptDep? Opt { get; set; }
+                IOptDep? IMyService.Opt => Opt;
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateProvider(source);
+        var serviceType = assembly.GetType("TestApp.IMyService")!;
+        var instance = provider.GetService(serviceType)!;
+        var optProp = serviceType.GetProperty("Opt")!;
+        var opt = optProp.GetValue(instance)!;
+        Assert.NotNull(opt);
+        var valueProp = opt.GetType().GetProperty("Value")!;
+        Assert.Equal("optional-present", (string)valueProp.GetValue(opt)!);
+    }
+
+    // ---------------------------------------------------------------
+    // 6. Multiple [Inject] properties are all populated
+    // ---------------------------------------------------------------
+    [Fact]
+    public void InjectProperty_MultipleProperties_AllPopulated()
+    {
+        const string source = """
+            using ZeroAlloc.Inject;
+            namespace TestApp;
+            public interface IDepA { string Value { get; } }
+            public interface IDepB { string Value { get; } }
+            [Transient]
+            public class DepA : IDepA { public string Value => "a"; }
+            [Transient]
+            public class DepB : IDepB { public string Value => "b"; }
+            public interface IMyService { IDepA A { get; } IDepB B { get; } }
+            [Transient]
+            public class MyService : IMyService
+            {
+                [Inject]
+                public IDepA A { get; set; } = null!;
+                [Inject]
+                public IDepB B { get; set; } = null!;
+                IDepA IMyService.A => A;
+                IDepB IMyService.B => B;
+            }
+            """;
+
+        var (assembly, provider) = BuildAndCreateProvider(source);
+        var serviceType = assembly.GetType("TestApp.IMyService")!;
+        var instance = provider.GetService(serviceType)!;
+        var aVal = (string)serviceType.GetProperty("A")!.GetValue(instance)!.GetType().GetProperty("Value")!.GetValue(serviceType.GetProperty("A")!.GetValue(instance)!)!;
+        var bVal = (string)serviceType.GetProperty("B")!.GetValue(instance)!.GetType().GetProperty("Value")!.GetValue(serviceType.GetProperty("B")!.GetValue(instance)!)!;
+        Assert.Equal("a", aVal);
+        Assert.Equal("b", bVal);
+    }
+
+    // ---------------------------------------------------------------
     // Helpers (copied from IntegrationTests)
     // ---------------------------------------------------------------
 
