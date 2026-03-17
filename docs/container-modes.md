@@ -1,3 +1,11 @@
+---
+id: container-modes
+title: Container Modes
+slug: /docs/container-modes
+description: Choose between MS DI Extension, Hybrid, and Standalone container modes.
+sidebar_position: 3
+---
+
 # Container Modes
 
 ZeroAlloc.Inject offers three ways to integrate with the .NET DI system. Each mode sits at a different point on the spectrum between full MS DI compatibility and maximum performance with zero runtime dependencies. Understanding the differences — startup cost, memory overhead, AOT compatibility, and whether framework services need to be resolvable — will help you pick the right mode for each project.
