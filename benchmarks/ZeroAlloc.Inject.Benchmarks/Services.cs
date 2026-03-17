@@ -33,6 +33,21 @@ public class ServiceWithDep : IServiceWithDep
     public void Execute() => _simple.Execute();
 }
 
+// Service with one property-injected dependency
+public interface IServiceWithPropertyDep
+{
+    void Execute();
+}
+
+[Transient]
+public class ServiceWithPropertyDep : IServiceWithPropertyDep
+{
+    [Inject]
+    public ISimpleService Simple { get; set; } = null!;
+
+    public void Execute() => Simple.Execute();
+}
+
 // Service with multiple dependencies
 public interface IServiceWithMultipleDeps
 {

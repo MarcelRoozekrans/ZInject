@@ -25,6 +25,12 @@ public class ResolutionBenchmarks
         msDiServices.AddTransient<IMultiService, MultiServiceA>();
         msDiServices.AddTransient<IMultiService, MultiServiceB>();
         msDiServices.AddTransient<IMultiService, MultiServiceC>();
+        msDiServices.AddTransient<IServiceWithPropertyDep>(sp =>
+        {
+            var svc = new ServiceWithPropertyDep();
+            svc.Simple = sp.GetRequiredService<ISimpleService>();
+            return svc;
+        });
         msDiServices.AddTransient<DecoratedServiceImpl>();
         msDiServices.AddTransient<IDecoratedService>(sp => new LoggingDecoratedService(sp.GetRequiredService<DecoratedServiceImpl>()));
         msDiServices.AddTransient(typeof(IGenericRepo<>), typeof(GenericRepo<>));
@@ -80,6 +86,23 @@ public class ResolutionBenchmarks
     [BenchmarkCategory("TransientWithDep")]
     public IServiceWithDep Standalone_ResolveWithDep()
         => _standaloneProvider.GetRequiredService<IServiceWithDep>();
+
+    // --- Transient resolution (1 property-injected dependency) ---
+
+    [Benchmark(Description = "MS DI: Resolve transient (1 property dep)")]
+    [BenchmarkCategory("PropertyInjection")]
+    public IServiceWithPropertyDep MsDi_ResolvePropertyDep()
+        => _msDiProvider.GetRequiredService<IServiceWithPropertyDep>();
+
+    [Benchmark(Description = "ZeroAlloc.Inject Container: Resolve transient (1 property dep)")]
+    [BenchmarkCategory("PropertyInjection")]
+    public IServiceWithPropertyDep Container_ResolvePropertyDep()
+        => _containerProvider.GetRequiredService<IServiceWithPropertyDep>();
+
+    [Benchmark(Description = "Standalone: Resolve transient (1 property dep)")]
+    [BenchmarkCategory("PropertyInjection")]
+    public IServiceWithPropertyDep Standalone_ResolvePropertyDep()
+        => _standaloneProvider.GetRequiredService<IServiceWithPropertyDep>();
 
     // --- Transient resolution (2 dependencies) ---
 
